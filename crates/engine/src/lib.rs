@@ -51,9 +51,19 @@ pub async fn run() -> Result<()> {
         let app = Router::new()
             .route("/stream/:id/:file_idx", get(stream_handler))
             .with_state(stream_state);
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
+            
+        let listener = match tokio::net::TcpListener::bind("127.0.0.1:3000").await {
+            Ok(l) => l,
+            Err(e) => {
+                tracing::error!("Failed to bind streaming server on 127.0.0.1:3000: {}", e);
+                return;
+            }
+        };
+        
         info!("Streaming server listening on http://127.0.0.1:3000");
-        axum::serve(listener, app).await.unwrap();
+        if let Err(e) = axum::serve(listener, app).await {
+            tracing::error!("Streaming server failed: {}", e);
+        }
     });
 
     // Start RPC Server

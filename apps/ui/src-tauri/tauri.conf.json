@@ -24,7 +24,8 @@
                 "all": true,
                 "request": true,
                 "scope": [
-                    "http://localhost:3000/*"
+                    "http://localhost:3000/*",
+                    "http://127.0.0.1:3000/*"
                 ]
             }
         },
@@ -36,7 +37,7 @@
             }
         ],
         "security": {
-            "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://localhost:3000 ws://localhost:3000;"
+            "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://localhost:3000 ws://localhost:3000 http://127.0.0.1:3000; media-src 'self' http://127.0.0.1:3000;"
         },
         "bundle": {
             "active": true,
