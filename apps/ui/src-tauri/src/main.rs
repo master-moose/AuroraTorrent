@@ -1,9 +1,9 @@
+```rust
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::Manager;
 use engine;
-use bridge::{RpcRequest, RpcResponse, PORT};
+use bridge::PORT;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -41,7 +41,7 @@ async fn rpc_request(request: String) -> Result<String, String> {
 
 fn main() {
     tauri::Builder::default()
-        .setup(|app| {
+        .setup(|_app| {
             // Spawn the engine in a separate thread
             tauri::async_runtime::spawn(async {
                 if let Err(e) = engine::run().await {

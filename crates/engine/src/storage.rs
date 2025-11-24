@@ -1,4 +1,5 @@
 // Storage scaffolding
+#[allow(dead_code)]
 pub struct Storage {
     // Sled db or file path
 }
