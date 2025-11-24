@@ -129,7 +129,7 @@ async fn handle_rpc(req: RpcRequest, state: &AppState) -> RpcResponse<serde_json
             
             // Parse magnet link for display name (dn)
             let name = magnet
-                .split('&')
+                .split(|c| c == '&' || c == '?')
                 .find(|part| part.starts_with("dn="))
                 .map(|part| part.trim_start_matches("dn=").to_string())
                 .and_then(|s| urlencoding::decode(&s).ok().map(|s| s.into_owned()))
