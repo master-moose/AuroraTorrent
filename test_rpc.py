@@ -15,22 +15,25 @@ def send_rpc(method, params=None):
         req["params"] = params
     
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect(('127.0.0.1', PORT))
-        s.sendall(json.dumps(req).encode('utf-8'))
-        
-        data = s.recv(4096)
-        s.close()
-        
-        print(f"Response for {method}: {data.decode('utf-8')}")
-        return json.loads(data.decode('utf-8'))
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect(('127.0.0.1', PORT))
+            s.sendall(json.dumps(req).encode('utf-8'))
+            
+            data = s.recv(4096)
+            
+            print(f"Response for {method}: {data.decode('utf-8')}")
+            return json.loads(data.decode('utf-8'))
+    except (socket.error, OSError) as e:
+        print(f"Network Error sending {json.dumps(req)}: {e}")
+        return None
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Unexpected Error: {e}")
         return None
 
-print("Adding Torrent...")
-send_rpc("AddTorrent", {"magnet": MAGNET})
+if __name__ == "__main__":
+    print("Adding Torrent...")
+    send_rpc("AddTorrent", {"magnet": MAGNET})
 
-print("\nListing Torrents...")
-res = send_rpc("ListTorrents")
-print(json.dumps(res, indent=2))
+    print("\nListing Torrents...")
+    res = send_rpc("ListTorrents")
+    print(json.dumps(res, indent=2))

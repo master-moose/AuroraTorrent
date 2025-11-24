@@ -1,0 +1,159 @@
+nohup: ignoring input
+
+> aurora-torrent-ui@0.0.0 tauri
+> tauri dev
+
+     Running BeforeDevCommand (`npm run dev`)
+
+> aurora-torrent-ui@0.0.0 dev
+> vite
+
+
+  VITE v5.4.21  ready in 143 ms
+
+  ➜  Local:   http://localhost:1420/
+  ➜  Network: use --host to expose
+        Info Watching /home/jai/Projects/AuroraTorrent/apps/ui/src-tauri for changes...
+        Info Watching /home/jai/Projects/AuroraTorrent/crates/engine for changes...
+        Info Watching /home/jai/Projects/AuroraTorrent/crates/bridge for changes...
+        Info Watching /home/jai/Projects/AuroraTorrent/apps/ui/src-tauri for changes...
+        Info Watching /home/jai/Projects/AuroraTorrent/examples/seeder for changes...
+[0m[1m[33mwarning[0m[0m[1m: struct `Storage` is never constructed[0m
+[0m [0m[0m[1m[38;5;12m--> [0m[0mcrates/engine/src/storage.rs:2:12[0m
+[0m  [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub struct Storage {[0m
+[0m  [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^^^^[0m
+[0m  [0m[0m[1m[38;5;12m|[0m
+[0m  [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default[0m
+
+[0m[1m[33mwarning[0m[0m[1m: associated function `new` is never used[0m
+[0m [0m[0m[1m[38;5;12m--> [0m[0mcrates/engine/src/storage.rs:7:12[0m
+[0m  [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m6[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl Storage {[0m
+[0m  [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m------------[0m[0m [0m[0m[1m[38;5;12massociated function in this implementation[0m
+[0m[1m[38;5;12m7[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn new() -> Self {[0m
+[0m  [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^[0m
+
+[1m[33mwarning[0m: `engine` (lib) generated 2 warnings
+[0m[1m[33mwarning[0m[0m[1m: unused import: `tauri::Manager`[0m
+[0m [0m[0m[1m[38;5;12m--> [0m[0mapps/ui/src-tauri/src/main.rs:4:5[0m
+[0m  [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m4[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0muse tauri::Manager;[0m
+[0m  [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^^^^^^^^[0m
+[0m  [0m[0m[1m[38;5;12m|[0m
+[0m  [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default[0m
+
+[0m[1m[33mwarning[0m[0m[1m: unused imports: `RpcRequest` and `RpcResponse`[0m
+[0m [0m[0m[1m[38;5;12m--> [0m[0mapps/ui/src-tauri/src/main.rs:6:14[0m
+[0m  [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m6[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0muse bridge::{RpcRequest, RpcResponse, PORT};[0m
+[0m  [0m[0m[1m[38;5;12m|[0m[0m              [0m[0m[1m[33m^^^^^^^^^^[0m[0m  [0m[0m[1m[33m^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: unused variable: `app`[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mapps/ui/src-tauri/src/main.rs:44:17[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m44[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m        .setup(|app| {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m                 [0m[0m[1m[33m^^^[0m[0m [0m[0m[1m[33mhelp: if this is intentional, prefix it with an underscore: `_app`[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default[0m
+
+[1m[33mwarning[0m: `aurora-torrent` (bin "aurora-torrent") generated 3 warnings (run `cargo fix --bin "aurora-torrent"` to apply 2 suggestions)
+[1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`dev` profile [unoptimized + debuginfo]]8;;\ target(s) in 0.17s
+
+** (aurora-torrent:2507396): WARNING **: 16:57:06.851: webkit_settings_set_enable_offline_web_application_cache is deprecated and does nothing.
+[2m2025-11-24T15:57:06.854391Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Starting AuroraTorrent Engine...
+[2m2025-11-24T15:57:06.854764Z[0m [32m INFO[0m [2mengine[0m[2m:[0m FFmpeg not found. Transcoding disabled.
+[2m2025-11-24T15:57:06.859847Z[0m [32m INFO[0m [2mmainline::dht[0m[2m:[0m Mainline DHT listening [3maddress[0m[2m=[0m0.0.0.0:6881
+DHT Initialized
+[2m2025-11-24T15:57:06.860053Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC server listening on 127.0.0.1:4000
+[2m2025-11-24T15:57:06.860313Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Streaming server listening on http://127.0.0.1:3000
+[2m2025-11-24T15:57:08.852016Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":1,"method":"ListTorrents"}
+[2m2025-11-24T15:57:08.852077Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:09.852587Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":2,"method":"ListTorrents"}
+[2m2025-11-24T15:57:09.852675Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:10.852692Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":3,"method":"ListTorrents"}
+[2m2025-11-24T15:57:10.852747Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:11.853363Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":4,"method":"ListTorrents"}
+[2m2025-11-24T15:57:11.853419Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:12.854246Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":5,"method":"ListTorrents"}
+[2m2025-11-24T15:57:12.854297Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:13.855312Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":6,"method":"ListTorrents"}
+[2m2025-11-24T15:57:13.855378Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:14.857000Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":7,"method":"ListTorrents"}
+[2m2025-11-24T15:57:14.857064Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:15.858573Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":8,"method":"ListTorrents"}
+[2m2025-11-24T15:57:15.858650Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:16.859277Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":9,"method":"ListTorrents"}
+[2m2025-11-24T15:57:16.859335Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:17.859725Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":10,"method":"ListTorrents"}
+[2m2025-11-24T15:57:17.859779Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:18.861758Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":11,"method":"ListTorrents"}
+[2m2025-11-24T15:57:18.861813Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:19.862863Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":12,"method":"ListTorrents"}
+[2m2025-11-24T15:57:19.862975Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:20.864826Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":13,"method":"ListTorrents"}
+[2m2025-11-24T15:57:20.864881Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:21.865974Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":14,"method":"ListTorrents"}
+[2m2025-11-24T15:57:21.866041Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:22.867463Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":15,"method":"ListTorrents"}
+[2m2025-11-24T15:57:22.867534Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:23.868732Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":16,"method":"ListTorrents"}
+[2m2025-11-24T15:57:23.868809Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:24.870818Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":17,"method":"ListTorrents"}
+[2m2025-11-24T15:57:24.870873Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:25.872757Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":18,"method":"ListTorrents"}
+[2m2025-11-24T15:57:25.872807Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:26.872979Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":19,"method":"ListTorrents"}
+[2m2025-11-24T15:57:26.873048Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:27.874564Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":20,"method":"ListTorrents"}
+[2m2025-11-24T15:57:27.874676Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:28.554990Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc": "2.0", "id": 1, "method": "AddTorrent", "params": {"magnet": "magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c&dn=Big+Buck+Bunny&tr=udp%3A%2F%2Fexplodie.org%3A6969&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Ftracker.empire-js.us%3A1337&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=wss%3A%2F%2Ftracker.btorrent.xyz&tr=wss%3A%2F%2Ftracker.fastcast.nz&tr=wss%3A%2F%2Ftracker.openwebtorrent.com&ws=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2F&xs=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2Fbig-buck-bunny.torrent"}}
+[2m2025-11-24T15:57:28.555132Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: AddTorrent { magnet: "magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c&dn=Big+Buck+Bunny&tr=udp%3A%2F%2Fexplodie.org%3A6969&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Ftracker.empire-js.us%3A1337&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=wss%3A%2F%2Ftracker.btorrent.xyz&tr=wss%3A%2F%2Ftracker.fastcast.nz&tr=wss%3A%2F%2Ftracker.openwebtorrent.com&ws=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2F&xs=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2Fbig-buck-bunny.torrent" }
+[2m2025-11-24T15:57:28.555553Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc": "2.0", "id": 1, "method": "ListTorrents"}
+[2m2025-11-24T15:57:28.555593Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:28.877104Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":21,"method":"ListTorrents"}
+[2m2025-11-24T15:57:28.877181Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:29.876543Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":22,"method":"ListTorrents"}
+[2m2025-11-24T15:57:29.876590Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:30.877693Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":23,"method":"ListTorrents"}
+[2m2025-11-24T15:57:30.877745Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:31.878538Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":24,"method":"ListTorrents"}
+[2m2025-11-24T15:57:31.878603Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:32.880006Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":25,"method":"ListTorrents"}
+[2m2025-11-24T15:57:32.880054Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:33.881212Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":26,"method":"ListTorrents"}
+[2m2025-11-24T15:57:33.881274Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:34.882140Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":27,"method":"ListTorrents"}
+[2m2025-11-24T15:57:34.882209Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:35.883525Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":28,"method":"ListTorrents"}
+[2m2025-11-24T15:57:35.883593Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:36.884489Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":29,"method":"ListTorrents"}
+[2m2025-11-24T15:57:36.884546Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:37.885558Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":30,"method":"ListTorrents"}
+[2m2025-11-24T15:57:37.885619Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:38.886430Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":31,"method":"ListTorrents"}
+[2m2025-11-24T15:57:38.886486Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:39.887529Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":32,"method":"ListTorrents"}
+[2m2025-11-24T15:57:39.887586Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:40.888717Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":33,"method":"ListTorrents"}
+[2m2025-11-24T15:57:40.888769Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:41.890359Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":34,"method":"ListTorrents"}
+[2m2025-11-24T15:57:41.890413Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:42.890532Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":35,"method":"ListTorrents"}
+[2m2025-11-24T15:57:42.890596Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:43.891581Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":36,"method":"ListTorrents"}
+[2m2025-11-24T15:57:43.891641Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:44.893171Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":37,"method":"ListTorrents"}
+[2m2025-11-24T15:57:44.893235Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:45.894218Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":38,"method":"ListTorrents"}
+[2m2025-11-24T15:57:45.894279Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:46.895476Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":39,"method":"ListTorrents"}
+[2m2025-11-24T15:57:46.895535Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:47.896050Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":40,"method":"ListTorrents"}
+[2m2025-11-24T15:57:47.896113Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:48.897240Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":41,"method":"ListTorrents"}
+[2m2025-11-24T15:57:48.897304Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:49.897279Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":42,"method":"ListTorrents"}
+[2m2025-11-24T15:57:49.897334Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents
+[2m2025-11-24T15:57:50.898173Z[0m [32m INFO[0m [2mengine[0m[2m:[0m RPC Raw: {"jsonrpc":"2.0","id":43,"method":"ListTorrents"}
+[2m2025-11-24T15:57:50.898256Z[0m [32m INFO[0m [2mengine[0m[2m:[0m Received command: ListTorrents

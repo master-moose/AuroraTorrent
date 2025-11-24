@@ -31,7 +31,7 @@ export default function LibraryGrid({ torrents, onStream }: { torrents: any[], o
         <div>
             <div className="flex justify-between items-end mb-6">
                 <h2 className="text-2xl font-bold">Your Torrents</h2>
-                <button onClick={addTorrent} className="text-sm font-bold hover:underline text-spotify-grey hover:text-white">Show all</button>
+                <button onClick={addTorrent} className="text-sm font-bold hover:underline text-spotify-grey hover:text-white">Add Torrent</button>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">

@@ -1,13 +1,15 @@
 import { invoke } from '@tauri-apps/api/tauri';
 
+let requestId = 0;
+
 export const sendRpc = async (method: string, params: any = {}) => {
     const request: any = {
         jsonrpc: "2.0",
-        id: Date.now(),
+        id: ++requestId,
         method,
     };
 
-    if (Object.keys(params).length > 0) {
+    if (params && Object.keys(params).length > 0) {
         request.params = params;
     }
 

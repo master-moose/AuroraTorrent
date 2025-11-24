@@ -21,7 +21,7 @@ struct AppState {
 }
 
 pub async fn run() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt::try_init().ok();
     info!("Starting AuroraTorrent Engine...");
 
     // Check for ffmpeg at startup
@@ -154,27 +154,41 @@ async fn handle_rpc(req: RpcRequest, state: &AppState) -> RpcResponse<serde_json
             let mut torrents = state.torrents.lock().unwrap();
             if let Some(t) = torrents.iter_mut().find(|t| t.id == id) {
                 t.status = "Downloading".to_string();
-            }
-            RpcResponse {
-                jsonrpc: "2.0".into(),
-                id: req.id,
-                result: Some(serde_json::json!({ "status": "started" })),
-                error: None,
+                RpcResponse {
+                    jsonrpc: "2.0".into(),
+                    id: req.id,
+                    result: Some(serde_json::json!({ "status": "started" })),
+                    error: None,
+                }
+            } else {
+                RpcResponse {
+                    jsonrpc: "2.0".into(),
+                    id: req.id,
+                    result: None,
+                    error: Some(format!("Torrent {} not found", id)),
+                }
             }
         }
         RpcCommand::StreamTorrent { id } => {
             let mut torrents = state.torrents.lock().unwrap();
             if let Some(t) = torrents.iter_mut().find(|t| t.id == id) {
                 t.status = "Streaming".to_string();
-            }
-            RpcResponse {
-                jsonrpc: "2.0".into(),
-                id: req.id,
-                result: Some(serde_json::json!({ 
-                    "status": "streaming",
-                    "url": format!("http://127.0.0.1:3000/stream/{}/0", id)
-                })),
-                error: None,
+                RpcResponse {
+                    jsonrpc: "2.0".into(),
+                    id: req.id,
+                    result: Some(serde_json::json!({ 
+                        "status": "streaming",
+                        "url": format!("http://127.0.0.1:3000/stream/{}/0", id)
+                    })),
+                    error: None,
+                }
+            } else {
+                RpcResponse {
+                    jsonrpc: "2.0".into(),
+                    id: req.id,
+                    result: None,
+                    error: Some(format!("Torrent {} not found", id)),
+                }
             }
         }
         _ => RpcResponse {

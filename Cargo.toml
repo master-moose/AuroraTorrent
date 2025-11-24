@@ -24,9 +24,7 @@ tempfile = "3.10"
 axum = "0.7"
 tower-http = { version = "0.5", features = ["cors", "fs"] }
 mainline = "6.0" # DHT
-tauri = { version = "2.0.0-beta", features = [] } # Using beta for v2 if possible, or stable v1. But let's stick to v1 for stability in scaffold unless v2 requested. Prompt didn't specify, but "stable Rust" implies stable ecosystem. Tauri v1 is safer.
-tauri-build = { version = "2.0.0-beta", features = [] }
+tauri = { version = "1.5", features = [] } # Using stable v1.5 to match workspace members
+tauri-build = { version = "1.5", features = [] }
 
-# Note: Using Tauri v1 syntax for stability in scaffold, or v2 if preferred. 
-# Let's use standard v1.5+ for now to avoid beta issues in a "runnable" scaffold unless I know v2 is stable.
-# Actually, let's use 1.6 for safety.
+# Note: Workspace uses Tauri v1.5 for stability and consistency.
