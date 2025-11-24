@@ -9,6 +9,33 @@ pub enum RpcCommand {
     PauseTorrent { id: String },
     RemoveTorrent { id: String },
     StreamTorrent { id: String },
+    GetConfig,
+    SetConfig { 
+        download_path: Option<String>,
+        max_download_speed: Option<u64>,
+        max_upload_speed: Option<u64>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FileInfo {
+    pub name: String,
+    pub size: u64,
+    pub progress: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PeerInfo {
+    pub ip: String,
+    pub client: String,
+    pub down_speed: u64,
+    pub up_speed: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TrackerInfo {
+    pub url: String,
+    pub status: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -20,6 +47,9 @@ pub struct TorrentState {
     pub download_speed: u64,
     pub upload_speed: u64,
     pub total_size: u64,
+    pub files: Vec<FileInfo>,
+    pub peers: Vec<PeerInfo>,
+    pub trackers: Vec<TrackerInfo>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

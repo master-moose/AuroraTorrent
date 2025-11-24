@@ -1,4 +1,5 @@
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use axum::{
     extract::{Path, State},
     response::IntoResponse,
@@ -13,11 +14,42 @@ use tracing::info;
 
 mod dht;
 mod storage;
+mod config;
+
+use config::Config;
+use std::fs;
 
 #[derive(Clone)]
 struct AppState {
     torrents: Arc<Mutex<Vec<TorrentState>>>,
+    config: Arc<Mutex<Config>>,
     has_ffmpeg: bool,
+}
+
+const STATE_FILE: &str = "torrents.json";
+
+#[derive(Serialize, Deserialize)]
+struct PersistedState {
+    torrents: Vec<TorrentState>,
+    config: Config,
+}
+
+fn save_state(state: &AppState) {
+    let torrents = state.torrents.lock().unwrap().clone();
+    let config = state.config.lock().unwrap().clone();
+    let data = PersistedState { torrents, config };
+    if let Ok(json) = serde_json::to_string_pretty(&data) {
+        let _ = fs::write(STATE_FILE, json);
+    }
+}
+
+fn load_state() -> (Vec<TorrentState>, Config) {
+    if let Ok(content) = fs::read_to_string(STATE_FILE) {
+        if let Ok(data) = serde_json::from_str::<PersistedState>(&content) {
+            return (data.torrents, data.config);
+        }
+    }
+    (Vec::new(), Config::default())
 }
 
 pub async fn run() -> Result<()> {
@@ -37,8 +69,12 @@ pub async fn run() -> Result<()> {
         info!("FFmpeg not found. Transcoding disabled.");
     }
 
+    let (loaded_torrents, loaded_config) = load_state();
+    info!("Loaded {} torrents from state.", loaded_torrents.len());
+
     let state = AppState {
-        torrents: Arc::new(Mutex::new(Vec::new())),
+        torrents: Arc::new(Mutex::new(loaded_torrents)),
+        config: Arc::new(Mutex::new(loaded_config)),
         has_ffmpeg,
     };
 
@@ -143,7 +179,18 @@ async fn handle_rpc(req: RpcRequest, state: &AppState) -> RpcResponse<serde_json
                 download_speed: 0,
                 upload_speed: 0,
                 total_size: 1024 * 1024 * 100, // Mock size
+                files: vec![
+                    bridge::FileInfo { name: "movie.mkv".to_string(), size: 1024 * 1024 * 100, progress: 0.0 },
+                    bridge::FileInfo { name: "sample.txt".to_string(), size: 1024, progress: 0.0 },
+                ],
+                peers: vec![
+                    bridge::PeerInfo { ip: "192.168.1.5".to_string(), client: "Transmission".to_string(), down_speed: 1024 * 500, up_speed: 0 },
+                ],
+                trackers: vec![
+                    bridge::TrackerInfo { url: "udp://tracker.opentrackr.org:1337".to_string(), status: "Working".to_string() },
+                ],
             });
+            save_state(state);
             RpcResponse {
                 jsonrpc: "2.0".into(),
                 id: req.id,
@@ -164,6 +211,7 @@ async fn handle_rpc(req: RpcRequest, state: &AppState) -> RpcResponse<serde_json
             let mut torrents = state.torrents.lock().unwrap();
             if let Some(t) = torrents.iter_mut().find(|t| t.id == id) {
                 t.status = "Downloading".to_string();
+                save_state(state);
                 RpcResponse {
                     jsonrpc: "2.0".into(),
                     id: req.id,
@@ -199,6 +247,30 @@ async fn handle_rpc(req: RpcRequest, state: &AppState) -> RpcResponse<serde_json
                     result: None,
                     error: Some(format!("Torrent {} not found", id)),
                 }
+            }
+        }
+        RpcCommand::GetConfig => {
+            let config = state.config.lock().unwrap();
+            RpcResponse {
+                jsonrpc: "2.0".into(),
+                id: req.id,
+                result: Some(serde_json::to_value(&*config).unwrap()),
+                error: None,
+            }
+        }
+        RpcCommand::SetConfig { download_path, max_download_speed, max_upload_speed } => {
+            let mut config = state.config.lock().unwrap();
+            if let Some(p) = download_path { config.download_path = p; }
+            if let Some(s) = max_download_speed { config.max_download_speed = s; }
+            if let Some(s) = max_upload_speed { config.max_upload_speed = s; }
+            
+            save_state(state);
+            
+            RpcResponse {
+                jsonrpc: "2.0".into(),
+                id: req.id,
+                result: Some(serde_json::json!({ "status": "updated" })),
+                error: None,
             }
         }
         _ => RpcResponse {
