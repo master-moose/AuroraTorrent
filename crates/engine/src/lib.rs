@@ -17,14 +17,29 @@ mod storage;
 #[derive(Clone)]
 struct AppState {
     torrents: Arc<Mutex<Vec<TorrentState>>>,
+    has_ffmpeg: bool,
 }
 
 pub async fn run() -> Result<()> {
     tracing_subscriber::fmt::init();
     info!("Starting AuroraTorrent Engine...");
 
+    // Check for ffmpeg at startup
+    let has_ffmpeg = tokio::process::Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .await
+        .is_ok();
+    
+    if has_ffmpeg {
+        info!("FFmpeg detected. Transcoding enabled.");
+    } else {
+        info!("FFmpeg not found. Transcoding disabled.");
+    }
+
     let state = AppState {
         torrents: Arc::new(Mutex::new(Vec::new())),
+        has_ffmpeg,
     };
 
     // Initialize DHT
@@ -171,7 +186,7 @@ async fn handle_rpc(req: RpcRequest, state: &AppState) -> RpcResponse<serde_json
     }
 }
 
-async fn stream_handler(Path((id, file_idx)): Path<(String, usize)>, State(_state): State<AppState>) -> impl IntoResponse {
+async fn stream_handler(Path((id, file_idx)): Path<(String, usize)>, State(state): State<AppState>) -> impl IntoResponse {
     // In a real implementation, we would fetch the file path from 'state' using 'id' and 'file_idx'.
     // For now, we'll mock the file path and type.
     let file_name = "movie.mkv"; // Mock file name
@@ -179,13 +194,7 @@ async fn stream_handler(Path((id, file_idx)): Path<(String, usize)>, State(_stat
 
     let is_native = file_name.ends_with(".mp4") || file_name.ends_with(".webm") || file_name.ends_with(".ogg");
     
-    // Check for ffmpeg
-    let has_ffmpeg = std::process::Command::new("ffmpeg")
-        .arg("-version")
-        .output()
-        .is_ok();
-
-    if !is_native && has_ffmpeg {
+    if !is_native && state.has_ffmpeg {
         info!("Transcoding {}...", file_name);
         // Spawn ffmpeg to transcode to fragmented MP4
         // Note: This is a skeleton. In real code, we'd pipe the stdout to the response body.
