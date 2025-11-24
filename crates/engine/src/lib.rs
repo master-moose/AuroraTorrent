@@ -172,6 +172,34 @@ async fn handle_rpc(req: RpcRequest, state: &AppState) -> RpcResponse<serde_json
 }
 
 async fn stream_handler(Path((id, file_idx)): Path<(String, usize)>, State(_state): State<AppState>) -> impl IntoResponse {
-    // Mock streaming response
-    format!("Streaming torrent {} file {}", id, file_idx)
+    // In a real implementation, we would fetch the file path from 'state' using 'id' and 'file_idx'.
+    // For now, we'll mock the file path and type.
+    let file_name = "movie.mkv"; // Mock file name
+    let _file_path = format!("/tmp/{}", file_name);
+
+    let is_native = file_name.ends_with(".mp4") || file_name.ends_with(".webm") || file_name.ends_with(".ogg");
+    
+    // Check for ffmpeg
+    let has_ffmpeg = std::process::Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .is_ok();
+
+    if !is_native && has_ffmpeg {
+        info!("Transcoding {}...", file_name);
+        // Spawn ffmpeg to transcode to fragmented MP4
+        // Note: This is a skeleton. In real code, we'd pipe the stdout to the response body.
+        // Since we don't have real file I/O yet, we return a message indicating intent.
+        return axum::response::Response::builder()
+            .header("Content-Type", "video/mp4")
+            .body(axum::body::Body::from("Transcoding stream placeholder..."))
+            .unwrap();
+    }
+
+    // Fallback or Native
+    info!("Streaming {} directly...", file_name);
+    axum::response::Response::builder()
+        .header("Content-Type", "text/plain")
+        .body(axum::body::Body::from(format!("Streaming torrent {} file {} directly", id, file_idx)))
+        .unwrap()
 }
