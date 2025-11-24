@@ -1,9 +1,0 @@
-[package]
-name = "seeder"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-tokio = { version = "1.36", features = ["full"] }
-mainline = "6.0"
-anyhow = "1.0"
