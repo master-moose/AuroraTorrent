@@ -1,4 +1,5 @@
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use axum::{
     extract::{Path, State},
     response::IntoResponse,
@@ -13,11 +14,66 @@ use tracing::info;
 
 mod dht;
 mod storage;
+mod config;
+
+use config::Config;
+use tokio::fs;
 
 #[derive(Clone)]
 struct AppState {
     torrents: Arc<Mutex<Vec<TorrentState>>>,
+    config: Arc<Mutex<Config>>,
     has_ffmpeg: bool,
+}
+
+const STATE_FILE: &str = "torrents.json";
+
+#[derive(Serialize, Deserialize)]
+struct PersistedState {
+    torrents: Vec<TorrentState>,
+    config: Config,
+}
+
+async fn save_state(state: &AppState) -> Result<()> {
+    let torrents = state.torrents.lock().unwrap().clone();
+    let config = state.config.lock().unwrap().clone();
+    let data = PersistedState { torrents, config };
+    
+    let json = serde_json::to_string_pretty(&data)?;
+    
+    // Atomic write: write to temp file then rename
+    let temp_file = format!("{}.tmp", STATE_FILE);
+    let mut file = fs::File::create(&temp_file).await?;
+    file.write_all(json.as_bytes()).await?;
+    file.flush().await?;
+    fs::rename(&temp_file, STATE_FILE).await?;
+    
+    Ok(())
+}
+
+async fn load_state() -> (Vec<TorrentState>, Config) {
+    if !std::path::Path::new(STATE_FILE).exists() {
+        return (Vec::new(), Config::default());
+    }
+
+    match fs::read_to_string(STATE_FILE).await {
+        Ok(content) => {
+            match serde_json::from_str::<PersistedState>(&content) {
+                Ok(data) => {
+                    // Basic validation could go here
+                    (data.torrents, data.config)
+                }
+                Err(e) => {
+                    tracing::error!("Failed to deserialize state: {}", e);
+                    (Vec::new(), Config::default())
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to read state file: {}", e);
+            (Vec::new(), Config::default())
+        }
+    }
 }
 
 pub async fn run() -> Result<()> {
@@ -37,8 +93,12 @@ pub async fn run() -> Result<()> {
         info!("FFmpeg not found. Transcoding disabled.");
     }
 
+    let (loaded_torrents, loaded_config) = load_state().await;
+    info!("Loaded {} torrents from state.", loaded_torrents.len());
+
     let state = AppState {
-        torrents: Arc::new(Mutex::new(Vec::new())),
+        torrents: Arc::new(Mutex::new(loaded_torrents)),
+        config: Arc::new(Mutex::new(loaded_config)),
         has_ffmpeg,
     };
 
@@ -124,7 +184,6 @@ async fn handle_rpc(req: RpcRequest, state: &AppState) -> RpcResponse<serde_json
     info!("Received command: {:?}", req.command);
     match req.command {
         RpcCommand::AddTorrent { magnet } => {
-            let mut torrents = state.torrents.lock().unwrap();
             let id = format!("{:x}", md5::compute(&magnet)); // Simple ID gen
             
             // Parse magnet link for display name (dn)
@@ -135,15 +194,31 @@ async fn handle_rpc(req: RpcRequest, state: &AppState) -> RpcResponse<serde_json
                 .and_then(|s| urlencoding::decode(&s).ok().map(|s| s.into_owned()))
                 .unwrap_or_else(|| "Unknown Torrent".to_string());
 
-            torrents.push(TorrentState {
-                id: id.clone(),
-                name,
-                progress: 0.0,
-                status: "Downloading".to_string(),
-                download_speed: 0,
-                upload_speed: 0,
-                total_size: 1024 * 1024 * 100, // Mock size
-            });
+            { // New scope to drop the lock before await
+                let mut torrents = state.torrents.lock().unwrap();
+                torrents.push(TorrentState {
+                    id: id.clone(),
+                    name: name.clone(),
+                    progress: 0.0,
+                    status: "Downloading".to_string(),
+                    download_speed: 0,
+                    upload_speed: 0,
+                    total_size: 1024 * 1024 * 100, // Mock size
+                    files: vec![
+                        bridge::FileInfo { name: "movie.mkv".to_string(), size: 1024 * 1024 * 100, progress: 0.0 },
+                        bridge::FileInfo { name: "sample.txt".to_string(), size: 1024, progress: 0.0 },
+                    ],
+                    peers: vec![
+                        bridge::PeerInfo { ip: "192.168.1.5".to_string(), client: "Transmission".to_string(), down_speed: 1024 * 500, up_speed: 0 },
+                    ],
+                    trackers: vec![
+                        bridge::TrackerInfo { url: "udp://tracker.opentrackr.org:1337".to_string(), status: "Working".to_string() },
+                    ],
+                });
+            } // Lock dropped here
+            if let Err(e) = save_state(state).await {
+                tracing::error!("Failed to save state: {}", e);
+            }
             RpcResponse {
                 jsonrpc: "2.0".into(),
                 id: req.id,
@@ -161,9 +236,20 @@ async fn handle_rpc(req: RpcRequest, state: &AppState) -> RpcResponse<serde_json
             }
         }
         RpcCommand::StartTorrent { id } => {
-            let mut torrents = state.torrents.lock().unwrap();
-            if let Some(t) = torrents.iter_mut().find(|t| t.id == id) {
-                t.status = "Downloading".to_string();
+            let found = {
+                let mut torrents = state.torrents.lock().unwrap();
+                if let Some(t) = torrents.iter_mut().find(|t| t.id == id) {
+                    t.status = "Downloading".to_string();
+                    true
+                } else {
+                    false
+                }
+            };
+
+            if found {
+                if let Err(e) = save_state(state).await {
+                    tracing::error!("Failed to save state: {}", e);
+                }
                 RpcResponse {
                     jsonrpc: "2.0".into(),
                     id: req.id,
@@ -199,6 +285,34 @@ async fn handle_rpc(req: RpcRequest, state: &AppState) -> RpcResponse<serde_json
                     result: None,
                     error: Some(format!("Torrent {} not found", id)),
                 }
+            }
+        }
+        RpcCommand::GetConfig => {
+            let config = state.config.lock().unwrap();
+            RpcResponse {
+                jsonrpc: "2.0".into(),
+                id: req.id,
+                result: Some(serde_json::to_value(&*config).unwrap()),
+                error: None,
+            }
+        }
+        RpcCommand::SetConfig { download_path, max_download_speed, max_upload_speed } => {
+            {
+                let mut config = state.config.lock().unwrap();
+                if let Some(p) = download_path { config.download_path = p; }
+                if let Some(s) = max_download_speed { config.max_download_speed = s; }
+                if let Some(s) = max_upload_speed { config.max_upload_speed = s; }
+            }
+            
+            if let Err(e) = save_state(state).await {
+                tracing::error!("Failed to save state: {}", e);
+            }
+            
+            RpcResponse {
+                jsonrpc: "2.0".into(),
+                id: req.id,
+                result: Some(serde_json::json!({ "status": "updated" })),
+                error: None,
             }
         }
         _ => RpcResponse {

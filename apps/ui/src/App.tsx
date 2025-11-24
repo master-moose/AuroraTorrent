@@ -3,13 +3,18 @@ import Sidebar from './components/Sidebar';
 import LibraryGrid from './components/LibraryGrid';
 import NowPlayingFooter from './components/NowPlayingFooter';
 import VideoPlayer from './components/VideoPlayer';
+import SettingsModal from './components/SettingsModal';
+import TorrentDetails from './components/TorrentDetails';
 import { sendRpc } from './rpc';
+import { Torrent } from './types';
 
 function App() {
-    const [view, setView] = useState('library');
-    const [torrents, setTorrents] = useState([]);
+    const [view, setView] = useState('home');
+    const [torrents, setTorrents] = useState<Torrent[]>([]);
     const [speedUnit, setSpeedUnit] = useState<'MB/s' | 'kB/s'>('MB/s');
     const [activeStreamUrl, setActiveStreamUrl] = useState<string | null>(null);
+    const [showSettings, setShowSettings] = useState(false);
+    const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null);
 
     useEffect(() => {
         const interval = setInterval(async () => {
@@ -43,6 +48,8 @@ function App() {
                     }}
                 />
             )}
+            {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+            {selectedTorrent && <TorrentDetails torrent={selectedTorrent} onClose={() => setSelectedTorrent(null)} />}
             <div className="flex flex-1 overflow-hidden">
                 <Sidebar currentView={view} setView={setView} />
                 <main className="flex-1 bg-spotify-black overflow-y-auto rounded-lg m-2 ml-0 p-6">
@@ -52,7 +59,7 @@ function App() {
                             <button className="bg-black/40 rounded-full p-2 px-3 hover:bg-black/60 transition"><span>&gt;</span></button>
                         </div>
                         <div className="flex gap-4">
-                            <button className="text-sm font-bold text-spotify-grey hover:text-white transition">Settings</button>
+                            <button onClick={() => setShowSettings(true)} className="text-sm font-bold text-spotify-grey hover:text-white transition">Settings</button>
                         </div>
                     </header>
 
