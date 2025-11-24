@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { X, File, Users, Server } from 'lucide-react';
+import { Torrent, FileInfo, PeerInfo, TrackerInfo } from '../types';
 
 interface TorrentDetailsProps {
-    torrent: any;
+    torrent: Torrent;
     onClose: () => void;
 }
 
@@ -18,7 +19,7 @@ export default function TorrentDetails({ torrent, onClose }: TorrentDetailsProps
 
                 <h2 className="text-2xl font-bold mb-2">{torrent.name}</h2>
                 <div className="text-sm text-spotify-grey mb-6">
-                    {(torrent.total_size / 1024 / 1024).toFixed(1)} MB • {torrent.status}
+                    {((torrent.total_size ?? 0) / 1024 / 1024).toFixed(1)} MB • {torrent.status}
                 </div>
 
                 <div className="flex gap-6 border-b border-spotify-light mb-4">
@@ -53,11 +54,11 @@ export default function TorrentDetails({ torrent, onClose }: TorrentDetailsProps
                                 </tr>
                             </thead>
                             <tbody>
-                                {torrent.files?.map((file: any, i: number) => (
+                                {torrent.files?.map((file: FileInfo, i: number) => (
                                     <tr key={i} className="hover:bg-white/5">
                                         <td className="py-2 text-white">{file.name}</td>
-                                        <td className="py-2 text-right">{(file.size / 1024 / 1024).toFixed(1)} MB</td>
-                                        <td className="py-2 text-right">{(file.progress * 100).toFixed(0)}%</td>
+                                        <td className="py-2 text-right">{((file.size ?? 0) / 1024 / 1024).toFixed(1)} MB</td>
+                                        <td className="py-2 text-right">{((file.progress ?? 0) * 100).toFixed(0)}%</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -75,12 +76,12 @@ export default function TorrentDetails({ torrent, onClose }: TorrentDetailsProps
                                 </tr>
                             </thead>
                             <tbody>
-                                {torrent.peers?.map((peer: any, i: number) => (
+                                {torrent.peers?.map((peer: PeerInfo, i: number) => (
                                     <tr key={i} className="hover:bg-white/5">
                                         <td className="py-2 text-white">{peer.ip}</td>
                                         <td className="py-2">{peer.client}</td>
-                                        <td className="py-2 text-right">{(peer.down_speed / 1024).toFixed(1)} kB/s</td>
-                                        <td className="py-2 text-right">{(peer.up_speed / 1024).toFixed(1)} kB/s</td>
+                                        <td className="py-2 text-right">{((peer.down_speed ?? 0) / 1024).toFixed(1)} kB/s</td>
+                                        <td className="py-2 text-right">{((peer.up_speed ?? 0) / 1024).toFixed(1)} kB/s</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -96,7 +97,7 @@ export default function TorrentDetails({ torrent, onClose }: TorrentDetailsProps
                                 </tr>
                             </thead>
                             <tbody>
-                                {torrent.trackers?.map((tracker: any, i: number) => (
+                                {torrent.trackers?.map((tracker: TrackerInfo, i: number) => (
                                     <tr key={i} className="hover:bg-white/5">
                                         <td className="py-2 text-white truncate max-w-md">{tracker.url}</td>
                                         <td className="py-2 text-right text-spotify-green">{tracker.status}</td>

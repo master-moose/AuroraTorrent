@@ -14,13 +14,18 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
 
     useEffect(() => {
         const fetchConfig = async () => {
-            const resp = await sendRpc('GetConfig');
-            if (resp && resp.result) {
-                setDownloadPath(resp.result.download_path);
-                setMaxDownloadSpeed(resp.result.max_download_speed);
-                setMaxUploadSpeed(resp.result.max_upload_speed);
+            try {
+                const resp = await sendRpc('GetConfig');
+                if (resp && resp.result) {
+                    setDownloadPath(resp.result.download_path);
+                    setMaxDownloadSpeed(resp.result.max_download_speed);
+                    setMaxUploadSpeed(resp.result.max_upload_speed);
+                }
+            } catch (error) {
+                console.error('Failed to fetch settings:', error);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         };
         fetchConfig();
     }, []);
@@ -60,8 +65,9 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                         <label className="block text-sm font-bold mb-2 text-spotify-grey">Max Download Speed (bytes/s, 0 = unlimited)</label>
                         <input
                             type="number"
+                            min="0"
                             value={maxDownloadSpeed}
-                            onChange={(e) => setMaxDownloadSpeed(Number(e.target.value))}
+                            onChange={(e) => setMaxDownloadSpeed(Math.max(0, Number(e.target.value)))}
                             className="w-full bg-black border border-spotify-light rounded p-2 text-white focus:border-spotify-green focus:outline-none"
                         />
                     </div>
@@ -70,8 +76,9 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                         <label className="block text-sm font-bold mb-2 text-spotify-grey">Max Upload Speed (bytes/s, 0 = unlimited)</label>
                         <input
                             type="number"
+                            min="0"
                             value={maxUploadSpeed}
-                            onChange={(e) => setMaxUploadSpeed(Number(e.target.value))}
+                            onChange={(e) => setMaxUploadSpeed(Math.max(0, Number(e.target.value)))}
                             className="w-full bg-black border border-spotify-light rounded p-2 text-white focus:border-spotify-green focus:outline-none"
                         />
                     </div>

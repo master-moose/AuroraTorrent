@@ -6,14 +6,15 @@ import VideoPlayer from './components/VideoPlayer';
 import SettingsModal from './components/SettingsModal';
 import TorrentDetails from './components/TorrentDetails';
 import { sendRpc } from './rpc';
+import { Torrent } from './types';
 
 function App() {
-    const [view, setView] = useState('library');
-    const [torrents, setTorrents] = useState([]);
+    const [view, setView] = useState('home');
+    const [torrents, setTorrents] = useState<Torrent[]>([]);
     const [speedUnit, setSpeedUnit] = useState<'MB/s' | 'kB/s'>('MB/s');
     const [activeStreamUrl, setActiveStreamUrl] = useState<string | null>(null);
     const [showSettings, setShowSettings] = useState(false);
-    const [selectedTorrent, setSelectedTorrent] = useState<any | null>(null);
+    const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null);
 
     useEffect(() => {
         const interval = setInterval(async () => {

@@ -1,7 +1,8 @@
 import { Play } from 'lucide-react';
 import { sendRpc } from '../rpc';
+import { Torrent } from '../types';
 
-export default function LibraryGrid({ torrents, onStream, onSelect }: { torrents: any[], onStream?: (id: string) => void, onSelect?: (t: any) => void }) {
+export default function LibraryGrid({ torrents, onStream, onSelect }: { torrents: Torrent[], onStream?: (id: string) => void, onSelect?: (t: Torrent) => void }) {
     const addTorrent = async () => {
         const magnet = prompt("Enter Magnet Link:");
         if (magnet) {
@@ -44,7 +45,7 @@ export default function LibraryGrid({ torrents, onStream, onSelect }: { torrents
                     <p className="text-sm text-spotify-grey line-clamp-2">Paste magnet link</p>
                 </div>
 
-                {torrents.map((t: any) => (
+                {torrents.map((t: Torrent) => (
                     <div
                         key={t.id}
                         className="bg-spotify-dark p-4 rounded-lg hover:bg-spotify-light transition group cursor-pointer relative"
