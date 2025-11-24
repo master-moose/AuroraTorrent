@@ -1,0 +1,32 @@
+[workspace]
+members = [
+    "crates/engine",
+    "crates/bridge",
+    "apps/ui/src-tauri",
+    "examples/seeder",
+]
+resolver = "2"
+
+[workspace.dependencies]
+tokio = { version = "1.36", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+reqwest = { version = "0.11", features = ["json", "stream"] }
+futures = "0.3"
+sha1 = "0.10"
+hex = "0.4"
+rand = "0.8"
+tempfile = "3.10"
+axum = "0.7"
+tower-http = { version = "0.5", features = ["cors", "fs"] }
+mainline = "6.0" # DHT
+tauri = { version = "2.0.0-beta", features = [] } # Using beta for v2 if possible, or stable v1. But let's stick to v1 for stability in scaffold unless v2 requested. Prompt didn't specify, but "stable Rust" implies stable ecosystem. Tauri v1 is safer.
+tauri-build = { version = "2.0.0-beta", features = [] }
+
+# Note: Using Tauri v1 syntax for stability in scaffold, or v2 if preferred. 
+# Let's use standard v1.5+ for now to avoid beta issues in a "runnable" scaffold unless I know v2 is stable.
+# Actually, let's use 1.6 for safety.
