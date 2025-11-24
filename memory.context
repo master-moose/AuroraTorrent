@@ -1,0 +1,27 @@
+PROJECT: AuroraTorrent
+VERSION: 0.1-SCAFFOLD
+CHOICES:
+  UI: Tauri + React + TypeScript + Tailwind + Framer Motion
+  DHT_strategy: prefer existing Rust DHT/libp2p crates; fallback to minimal BEP-05-compatible DHT
+  Streaming: real piece-based streaming (play-as-download)
+  Installers: .msi (Windows), .dmg (macOS), AppImage + .deb (Linux)
+  License: Dual MIT/Apache-2.0
+  Seeder: in-repo Rust seeder
+MEMORY_SCHEMA:
+PROJECT: AuroraTorrent
+VERSION: 0.1-SCAFFOLD
+TODO:
+  - Implement DHT node table and get_peers/announce_peer (or integrate crate found by IDE).
+  - Piece-level HTTP streaming bridge for play-as-download.
+  - UI: exact Spotify replica (sidebar, grid, now-playing footer showing all running torrents).
+  - IPC: JSON-RPC over local sockets with StreamPieceRange support.
+  - Packaging: add build scripts for .msi, .dmg, AppImage, .deb.
+  - Integration tests: engine + in-repo seeder download.
+ACTIVE_DECISIONS:
+  - Use Tauri + React for quickest polished UI.
+  - Selected `mainline` crate for DHT.
+  - Streaming must be real (piece-based).
+  - Store torrent state encrypted if passphrase provided.
+NOTES:
+  - User prefers exact Spotify replica and video streaming while downloading.
+  - Persist this block as the "pseudo memory.context" for the project.
