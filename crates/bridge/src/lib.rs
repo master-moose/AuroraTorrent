@@ -3,14 +3,28 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "method", content = "params")]
 pub enum RpcCommand {
-    AddTorrent { magnet: String },
+    AddTorrent {
+        magnet: String,
+    },
+    AddTorrentFile {
+        name: String,
+        content: String,
+    },
     ListTorrents,
-    StartTorrent { id: String },
-    PauseTorrent { id: String },
-    RemoveTorrent { id: String },
-    StreamTorrent { id: String },
+    StartTorrent {
+        id: String,
+    },
+    PauseTorrent {
+        id: String,
+    },
+    RemoveTorrent {
+        id: String,
+    },
+    StreamTorrent {
+        id: String,
+    },
     GetConfig,
-    SetConfig { 
+    SetConfig {
         download_path: Option<String>,
         max_download_speed: Option<u64>,
         max_upload_speed: Option<u64>,

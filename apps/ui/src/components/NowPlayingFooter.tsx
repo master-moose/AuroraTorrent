@@ -1,73 +1,109 @@
-import { Play, Pause, SkipBack, SkipForward, Settings, ListMusic, MonitorSpeaker, Volume2 } from 'lucide-react';
+import { Play, Download, ArrowUp, ArrowDown } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Torrent } from '../types';
 
-export default function NowPlayingFooter({ torrents, speedUnit, setSpeedUnit }: { torrents: any[], speedUnit: 'MB/s' | 'kB/s', setSpeedUnit: (u: 'MB/s' | 'kB/s') => void }) {
-    const active = torrents.find(t => t.status === 'Downloading' || t.status === 'Seeding' || t.status === 'Streaming') || torrents[0];
+interface NowPlayingFooterProps {
+    torrent?: Torrent;
+    onStream?: () => void;
+}
 
+export default function NowPlayingFooter({ torrent, onStream }: NowPlayingFooterProps) {
     const formatSpeed = (bytes: number) => {
-        if (speedUnit === 'MB/s') return `${(bytes / 1024 / 1024).toFixed(2)} MB/s`;
-        return `${(bytes / 1024).toFixed(0)} kB/s`;
+        if (bytes === 0) return '0 B/s';
+        const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
     };
 
-    const toggleUnit = () => {
-        setSpeedUnit(speedUnit === 'MB/s' ? 'kB/s' : 'MB/s');
+    const formatSize = (bytes: number) => {
+        if (bytes === 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
     };
 
     return (
-        <div className="h-24 bg-spotify-dark border-t border-spotify-light px-4 flex justify-between items-center z-50">
-            <div className="flex items-center gap-4 w-[30%]">
-                {active ? (
+        <div className="h-20 bg-aurora-deep/80 backdrop-blur-md border-t border-aurora-border/30 px-6 flex items-center justify-between relative z-50">
+            {/* Left: Current torrent info */}
+            <div className="flex items-center gap-4 w-[30%] min-w-0">
+                {torrent ? (
                     <>
-                        <div className="w-14 h-14 bg-gradient-to-br from-green-400 to-blue-500 rounded"></div>
-                        <div>
-                            <div className="font-sm hover:underline cursor-pointer">{active.name}</div>
-                            <div className="text-xs text-spotify-grey">{active.status}</div>
+                        <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-aurora-cyan to-aurora-violet flex-shrink-0" />
+                        <div className="min-w-0">
+                            <p className="font-medium text-aurora-text truncate text-sm">
+                                {torrent.name}
+                            </p>
+                            <p className="text-xs text-aurora-dim">
+                                {torrent.status} • {formatSize(torrent.total_size)}
+                            </p>
                         </div>
                     </>
                 ) : (
-                    <div className="text-xs text-spotify-grey">No active torrents</div>
+                    <p className="text-sm text-aurora-dim">No active torrents</p>
                 )}
             </div>
 
-            <div className="flex flex-col items-center max-w-[40%] w-full gap-2">
-                {active?.status === 'Streaming' ? (
-                    // Player Controls
-                    <div className="flex items-center gap-6">
-                        <button className="text-spotify-grey hover:text-white"><SkipBack size={20} fill="currentColor" /></button>
-                        <button className="bg-white rounded-full p-2 hover:scale-105 transition">
-                            <Pause size={20} fill="black" className="text-black" />
-                        </button>
-                        <button className="text-spotify-grey hover:text-white"><SkipForward size={20} fill="currentColor" /></button>
-                    </div>
-                ) : (
-                    // Progress Bar & Speed
-                    <div className="flex flex-col items-center w-full">
-                        <div className="text-xs text-spotify-grey font-mono mb-1 cursor-pointer hover:text-white" onClick={toggleUnit}>
-                            {active ? formatSpeed(active.download_speed) : '0.00 MB/s'}
-                        </div>
-                    </div>
-                )}
-
-                {active && (
-                    <div className="w-full flex items-center gap-2 text-xs text-spotify-grey">
-                        <span>{((active.progress || 0) * 100).toFixed(1)}%</span>
-                        <div className="h-1 flex-1 bg-spotify-light rounded-full overflow-hidden group cursor-pointer">
-                            <div className="h-full bg-spotify-green transition-all" style={{ width: `${(active.progress || 0) * 100}%` }}></div>
-                        </div>
-                        <span>{(active.total_size / 1024 / 1024).toFixed(0)} MB</span>
-                    </div>
-                )}
-            </div>
-
-            <div className="flex items-center justify-end gap-3 w-[30%] text-spotify-grey">
-                {active?.status === 'Streaming' && (
+            {/* Center: Progress and controls */}
+            <div className="flex flex-col items-center w-[40%] gap-2">
+                {torrent && (
                     <>
-                        <Settings size={20} className="hover:text-white cursor-pointer" />
-                        <ListMusic size={20} className="hover:text-white cursor-pointer" />
-                        <MonitorSpeaker size={20} className="hover:text-white cursor-pointer" />
-                        <div className="flex items-center gap-2 w-32">
-                            <Volume2 size={20} className="hover:text-white cursor-pointer" />
-                            <div className="h-1 flex-1 bg-spotify-light rounded-full overflow-hidden group cursor-pointer">
-                                <div className="h-full w-2/3 bg-white group-hover:bg-spotify-green"></div>
+                        {/* Play/stream button */}
+                        {torrent.status === 'Downloading' || torrent.status === 'Streaming' ? (
+                            <motion.button
+                                onClick={onStream}
+                                className="w-10 h-10 bg-aurora-cyan rounded-full flex items-center justify-center hover:bg-aurora-teal transition-colors"
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                            >
+                                <Play className="w-5 h-5 text-aurora-void ml-0.5" fill="currentColor" />
+                            </motion.button>
+                        ) : (
+                            <div className="w-10 h-10 bg-aurora-night rounded-full flex items-center justify-center">
+                                <Download className="w-5 h-5 text-aurora-dim" />
+                            </div>
+                        )}
+
+                        {/* Progress bar */}
+                        <div className="w-full flex items-center gap-3">
+                            <span className="text-xs text-aurora-dim font-mono w-12 text-right">
+                                {Math.round(torrent.progress * 100)}%
+                            </span>
+                            <div className="flex-1 progress-bar">
+                                <motion.div 
+                                    className="progress-bar-fill"
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${torrent.progress * 100}%` }}
+                                    transition={{ duration: 0.3, ease: 'easeOut' }}
+                                />
+                            </div>
+                            <span className="text-xs text-aurora-dim font-mono w-16">
+                                {formatSize(torrent.total_size)}
+                            </span>
+                        </div>
+                    </>
+                )}
+            </div>
+
+            {/* Right: Speed indicators */}
+            <div className="flex items-center justify-end gap-6 w-[30%]">
+                {torrent && (
+                    <>
+                        <div className="flex items-center gap-2">
+                            <ArrowDown className="w-4 h-4 text-aurora-cyan" />
+                            <div>
+                                <p className="text-sm font-mono text-aurora-text">
+                                    {formatSpeed(torrent.download_speed)}
+                                </p>
+                                <p className="text-xs text-aurora-dim">Download</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <ArrowUp className="w-4 h-4 text-aurora-teal" />
+                            <div>
+                                <p className="text-sm font-mono text-aurora-text">
+                                    {formatSpeed(torrent.upload_speed)}
+                                </p>
+                                <p className="text-xs text-aurora-dim">Upload</p>
                             </div>
                         </div>
                     </>

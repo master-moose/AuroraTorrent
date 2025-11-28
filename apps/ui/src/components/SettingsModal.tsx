@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { X, Save } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { X, Save, Folder, ArrowDown, ArrowUp } from 'lucide-react';
 import { sendRpc } from '../rpc';
 
 interface SettingsModalProps {
@@ -11,15 +12,16 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     const [maxDownloadSpeed, setMaxDownloadSpeed] = useState(0);
     const [maxUploadSpeed, setMaxUploadSpeed] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
         const fetchConfig = async () => {
             try {
                 const resp = await sendRpc('GetConfig');
-                if (resp && resp.result) {
-                    setDownloadPath(resp.result.download_path);
-                    setMaxDownloadSpeed(resp.result.max_download_speed);
-                    setMaxUploadSpeed(resp.result.max_upload_speed);
+                if (resp?.result) {
+                    setDownloadPath(resp.result.download_path || '');
+                    setMaxDownloadSpeed(resp.result.max_download_speed || 0);
+                    setMaxUploadSpeed(resp.result.max_upload_speed || 0);
                 }
             } catch (error) {
                 console.error('Failed to fetch settings:', error);
@@ -31,69 +33,141 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     }, []);
 
     const handleSave = async () => {
-        await sendRpc('SetConfig', {
-            download_path: downloadPath,
-            max_download_speed: maxDownloadSpeed,
-            max_upload_speed: maxUploadSpeed,
-        });
-        onClose();
+        setSaving(true);
+        try {
+            await sendRpc('SetConfig', {
+                download_path: downloadPath,
+                max_download_speed: maxDownloadSpeed,
+                max_upload_speed: maxUploadSpeed,
+            });
+            onClose();
+        } catch (error) {
+            console.error('Failed to save settings:', error);
+        } finally {
+            setSaving(false);
+        }
     };
 
-    if (loading) return null;
+    const formatSpeedLabel = (bytes: number) => {
+        if (bytes === 0) return 'Unlimited';
+        const mb = bytes / (1024 * 1024);
+        return `${mb.toFixed(1)} MB/s`;
+    };
+
+    if (loading) {
+        return (
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="fixed inset-0 bg-aurora-void/80 backdrop-blur-sm z-[100] flex items-center justify-center"
+            >
+                <div className="w-8 h-8 border-2 border-aurora-cyan border-t-transparent rounded-full animate-spin" />
+            </motion.div>
+        );
+    }
 
     return (
-        <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
-            <div className="bg-spotify-dark w-full max-w-md rounded-lg p-6 relative shadow-2xl border border-spotify-light">
-                <button onClick={onClose} className="absolute top-4 right-4 text-spotify-grey hover:text-white">
-                    <X size={24} />
-                </button>
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-aurora-void/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+            onClick={onClose}
+        >
+            <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="card w-full max-w-lg p-6"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-xl font-bold text-aurora-text">Settings</h2>
+                    <button
+                        onClick={onClose}
+                        className="p-2 text-aurora-dim hover:text-aurora-text hover:bg-aurora-night/50 rounded-lg transition-colors"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
 
-                <h2 className="text-2xl font-bold mb-6">Settings</h2>
-
-                <div className="space-y-4">
+                <div className="space-y-6">
+                    {/* Download Path */}
                     <div>
-                        <label className="block text-sm font-bold mb-2 text-spotify-grey">Download Path</label>
+                        <label className="flex items-center gap-2 text-sm font-medium text-aurora-dim mb-2">
+                            <Folder size={16} />
+                            Download Location
+                        </label>
                         <input
                             type="text"
                             value={downloadPath}
                             onChange={(e) => setDownloadPath(e.target.value)}
-                            className="w-full bg-black border border-spotify-light rounded p-2 text-white focus:border-spotify-green focus:outline-none"
+                            className="input"
+                            placeholder="/path/to/downloads"
                         />
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-bold mb-2 text-spotify-grey">Max Download Speed (bytes/s, 0 = unlimited)</label>
-                        <input
-                            type="number"
-                            min="0"
-                            value={maxDownloadSpeed}
-                            onChange={(e) => setMaxDownloadSpeed(Math.max(0, Number(e.target.value)))}
-                            className="w-full bg-black border border-spotify-light rounded p-2 text-white focus:border-spotify-green focus:outline-none"
-                        />
+                    {/* Speed Limits */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="flex items-center gap-2 text-sm font-medium text-aurora-dim mb-2">
+                                <ArrowDown size={16} className="text-aurora-cyan" />
+                                Max Download
+                            </label>
+                            <input
+                                type="number"
+                                min="0"
+                                step="1048576"
+                                value={maxDownloadSpeed}
+                                onChange={(e) => setMaxDownloadSpeed(Math.max(0, Number(e.target.value)))}
+                                className="input"
+                            />
+                            <p className="text-xs text-aurora-muted mt-1">
+                                {formatSpeedLabel(maxDownloadSpeed)}
+                            </p>
+                        </div>
+                        <div>
+                            <label className="flex items-center gap-2 text-sm font-medium text-aurora-dim mb-2">
+                                <ArrowUp size={16} className="text-aurora-teal" />
+                                Max Upload
+                            </label>
+                            <input
+                                type="number"
+                                min="0"
+                                step="1048576"
+                                value={maxUploadSpeed}
+                                onChange={(e) => setMaxUploadSpeed(Math.max(0, Number(e.target.value)))}
+                                className="input"
+                            />
+                            <p className="text-xs text-aurora-muted mt-1">
+                                {formatSpeedLabel(maxUploadSpeed)}
+                            </p>
+                        </div>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-bold mb-2 text-spotify-grey">Max Upload Speed (bytes/s, 0 = unlimited)</label>
-                        <input
-                            type="number"
-                            min="0"
-                            value={maxUploadSpeed}
-                            onChange={(e) => setMaxUploadSpeed(Math.max(0, Number(e.target.value)))}
-                            className="w-full bg-black border border-spotify-light rounded p-2 text-white focus:border-spotify-green focus:outline-none"
-                        />
-                    </div>
+                    <p className="text-xs text-aurora-muted">
+                        Set to 0 for unlimited speed. Values are in bytes per second.
+                    </p>
                 </div>
 
-                <div className="mt-8 flex justify-end">
+                <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-aurora-border/50">
+                    <button onClick={onClose} className="btn-secondary">
+                        Cancel
+                    </button>
                     <button
                         onClick={handleSave}
-                        className="bg-spotify-green text-black font-bold py-2 px-6 rounded-full hover:scale-105 transition flex items-center gap-2"
+                        disabled={saving}
+                        className="btn-primary flex items-center gap-2"
                     >
-                        <Save size={18} />
-                        Save
+                        {saving ? (
+                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                            <Save size={18} />
+                        )}
+                        Save Changes
                     </button>
                 </div>
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
     );
 }
