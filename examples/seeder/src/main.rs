@@ -4,7 +4,7 @@ use mainline::Dht;
 #[tokio::main]
 async fn main() -> Result<()> {
     println!("Starting Seeder...");
-    let dht = Dht::client()?;
+    let _dht = Dht::client()?;
     println!("Seeder DHT initialized. Waiting for peers...");
 
     // Keep alive

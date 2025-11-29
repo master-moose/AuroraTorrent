@@ -3,29 +3,24 @@
 //! Manages peer connections, piece downloads, and tracker communication
 
 use crate::peer::{generate_peer_id, PeerConnection, PeerMessage};
-use crate::piece::{BlockInfo, PieceManager, BLOCK_SIZE};
-use crate::torrent::{MagnetInfo, TorrentMetainfo};
+use crate::piece::PieceManager;
+use crate::torrent::TorrentMetainfo;
 use crate::tracker::{announce, AnnounceParams, TrackerEvent};
 use bytes::Bytes;
 use std::collections::{HashMap, HashSet, VecDeque};
+use crate::piece::BlockInfo;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{broadcast, mpsc, Mutex, RwLock, Semaphore};
+use tokio::sync::{broadcast, Mutex, RwLock, Semaphore};
 use tokio::time::interval;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Maximum concurrent peer connections
 const MAX_PEERS: usize = 50;
-/// Maximum concurrent piece downloads
-const MAX_CONCURRENT_PIECES: usize = 5;
-/// Block request timeout
-const BLOCK_TIMEOUT: Duration = Duration::from_secs(30);
-/// Keep-alive interval
-const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(120);
 
 /// Session state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,8 +74,8 @@ pub struct TorrentSession {
     peer_stats: Arc<RwLock<HashMap<SocketAddr, PeerStats>>>,
     /// Available peers from tracker/DHT
     available_peers: Arc<Mutex<VecDeque<SocketAddr>>>,
-    /// Download path
-    download_path: PathBuf,
+    /// Download path (stored for resume capability)
+    pub download_path: PathBuf,
     /// Whether to use sequential mode
     sequential: AtomicBool,
     /// Stop signal
@@ -90,7 +85,9 @@ pub struct TorrentSession {
     /// Total uploaded bytes
     total_uploaded: AtomicU64,
     /// Listen port for incoming connections
-    listen_port: u16,
+    pub port: u16,
+    /// Additional trackers added by user
+    extra_trackers: Arc<RwLock<Vec<String>>>,
 }
 
 impl TorrentSession {
@@ -129,7 +126,8 @@ impl TorrentSession {
             stop_tx,
             total_downloaded: AtomicU64::new(0),
             total_uploaded: AtomicU64::new(0),
-            listen_port,
+            port: listen_port,
+            extra_trackers: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -216,6 +214,23 @@ impl TorrentSession {
         self.pieces.clone()
     }
 
+    /// Add peers (e.g., from DHT discovery)
+    pub async fn add_peers(&self, peers: Vec<std::net::SocketAddr>) {
+        let peer_count = peers.len();
+        let connected = self.connected_peers.read().await;
+        let mut available = self.available_peers.lock().await;
+        for peer in peers {
+            if !connected.contains(&peer) && !available.contains(&peer) {
+                available.push_back(peer);
+            }
+        }
+        debug!(
+            "Added {} DHT peers, total available: {}",
+            peer_count,
+            available.len()
+        );
+    }
+
     /// Tracker announce loop
     async fn tracker_loop(self: Arc<Self>) {
         let mut stop_rx = self.stop_tx.subscribe();
@@ -261,7 +276,7 @@ impl TorrentSession {
         let params = AnnounceParams {
             info_hash: self.metainfo.info_hash,
             peer_id: self.peer_id,
-            port: self.listen_port,
+            port: self.port,
             uploaded: self.total_uploaded.load(Ordering::Relaxed),
             downloaded: self.total_downloaded.load(Ordering::Relaxed),
             left,
@@ -368,7 +383,7 @@ impl TorrentSession {
 
     /// Listen for incoming peer connections
     async fn listen_for_peers(self: Arc<Self>) {
-        let listener = match TcpListener::bind(format!("0.0.0.0:{}", self.listen_port)).await {
+        let listener = match TcpListener::bind(format!("0.0.0.0:{}", self.port)).await {
             Ok(l) => l,
             Err(e) => {
                 warn!("Failed to bind listener: {}", e);
@@ -376,7 +391,7 @@ impl TorrentSession {
             }
         };
 
-        info!("Listening for peers on port {}", self.listen_port);
+        info!("Listening for peers on port {}", self.port);
         let mut stop_rx = self.stop_tx.subscribe();
 
         loop {
@@ -462,9 +477,15 @@ impl TorrentSession {
         conn.state.am_interested = true;
 
         // Main peer loop
+        // pending_requests: blocks we've requested but not yet received
         let mut pending_requests: Vec<BlockInfo> = Vec::new();
+        // blocks_to_request: blocks we need to request (from the current piece)
+        let mut blocks_to_request: VecDeque<BlockInfo> = VecDeque::new();
         let mut last_activity = Instant::now();
         let mut current_piece: Option<u32> = None;
+
+        // Maximum concurrent requests to keep the pipeline full
+        const MAX_PENDING: usize = 5;
 
         loop {
             let state = *self.state.read().await;
@@ -476,6 +497,47 @@ impl TorrentSession {
             if last_activity.elapsed() > Duration::from_secs(300) {
                 debug!("Peer {} timed out", addr);
                 break;
+            }
+
+            // Send requests if we can (before waiting for messages)
+            if !conn.state.peer_choking && state == SessionState::Downloading {
+                // Fill our request queue if needed
+                while blocks_to_request.is_empty() && pending_requests.len() < MAX_PENDING {
+                    if current_piece.is_none() {
+                        let selected = self.pieces.read().await.select_piece(&conn.bitfield);
+                        if let Some(piece) = selected {
+                            current_piece = Some(piece);
+                            let blocks = self.pieces.read().await.start_piece(piece);
+                            blocks_to_request.extend(blocks);
+                            debug!("Selected piece {} with {} blocks", piece, blocks_to_request.len());
+                        } else {
+                            // No pieces available from this peer
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+
+                // Send requests up to MAX_PENDING
+                while pending_requests.len() < MAX_PENDING {
+                    if let Some(block) = blocks_to_request.pop_front() {
+                        if conn
+                            .send(PeerMessage::Request {
+                                index: block.piece,
+                                begin: block.offset,
+                                length: block.length,
+                            })
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                        pending_requests.push(block);
+                    } else {
+                        break;
+                    }
+                }
             }
 
             // Receive message with timeout
@@ -501,15 +563,18 @@ impl TorrentSession {
                 PeerMessage::Choke => {
                     // Cancel pending requests
                     pending_requests.clear();
+                    blocks_to_request.clear();
                     if let Some(piece) = current_piece.take() {
                         self.pieces.read().await.cancel_piece(piece);
                     }
                 }
                 PeerMessage::Unchoke => {
-                    // Can request pieces now
+                    // Can request pieces now - will be handled at top of loop
+                    debug!("Peer {} unchoked us", addr);
                 }
-                PeerMessage::Have { piece_index: _ } => {
-                    // Peer got a new piece
+                PeerMessage::Have { piece_index } => {
+                    // Peer got a new piece - already handled in handle_message
+                    debug!("Peer {} has piece {}", addr, piece_index);
                 }
                 PeerMessage::Bitfield { .. } => {
                     // Already handled in handle_message
@@ -576,6 +641,7 @@ impl TorrentSession {
                             Ok(true) => {
                                 // Mark piece as complete
                                 self.pieces.write().await.mark_verified(index as usize);
+                                info!("Piece {} verified and complete", index);
 
                                 // Check if torrent is complete
                                 if self.pieces.read().await.is_complete() {
@@ -587,6 +653,7 @@ impl TorrentSession {
                             }
                             Ok(false) => {
                                 // Hash mismatch, will retry
+                                warn!("Piece {} hash mismatch, will retry", index);
                                 current_piece = None;
                             }
                             Err(e) => {
@@ -600,40 +667,6 @@ impl TorrentSession {
                     // Peer cancelled a request
                 }
                 _ => {}
-            }
-
-            // Request more blocks if we can
-            if !conn.state.peer_choking && state == SessionState::Downloading {
-                // Keep pipeline full
-                while pending_requests.len() < 5 {
-                    if current_piece.is_none() {
-                        // Select a new piece
-                        let selected = self.pieces.read().await.select_piece(&conn.bitfield);
-                        if let Some(piece) = selected {
-                            current_piece = Some(piece);
-                            let blocks = self.pieces.read().await.start_piece(piece);
-                            pending_requests.extend(blocks);
-                        } else {
-                            break;
-                        }
-                    }
-
-                    if let Some(block) = pending_requests.first().cloned() {
-                        if conn
-                            .send(PeerMessage::Request {
-                                index: block.piece,
-                                begin: block.offset,
-                                length: block.length,
-                            })
-                            .await
-                            .is_err()
-                        {
-                            break;
-                        }
-                    } else {
-                        break;
-                    }
-                }
             }
         }
 
@@ -680,6 +713,95 @@ impl TorrentSession {
                     stats.progress = progress;
                 }
             }
+        }
+    }
+
+    /// Force verification of all pieces
+    pub async fn force_recheck(&self) {
+        info!("Force rechecking torrent: {}", self.metainfo.name);
+        
+        // Set state to show we're checking
+        let was_state = *self.state.read().await;
+        *self.state.write().await = SessionState::Starting;
+        
+        // Verify all pieces
+        {
+            let mut pieces = self.pieces.write().await;
+            pieces.verify_all().await;
+        }
+        
+        // Restore state or set to seeding if complete
+        let is_complete = self.pieces.read().await.is_complete();
+        if is_complete {
+            *self.state.write().await = SessionState::Seeding;
+        } else if was_state == SessionState::Paused {
+            *self.state.write().await = SessionState::Paused;
+        } else {
+            *self.state.write().await = SessionState::Downloading;
+        }
+        
+        info!("Recheck complete for: {}", self.metainfo.name);
+    }
+
+    /// Force announce to all trackers
+    pub async fn force_reannounce(&self) {
+        info!("Force reannouncing torrent: {}", self.metainfo.name);
+        self.announce_to_trackers(TrackerEvent::None).await;
+    }
+
+    /// Add trackers to this torrent
+    pub async fn add_trackers(&self, trackers: Vec<String>) {
+        let mut extra = self.extra_trackers.write().await;
+        for tracker in trackers {
+            if !extra.contains(&tracker) {
+                info!("Added tracker: {}", tracker);
+                extra.push(tracker);
+            }
+        }
+    }
+
+    /// Remove trackers from this torrent
+    pub async fn remove_trackers(&self, trackers: Vec<String>) {
+        let mut extra = self.extra_trackers.write().await;
+        extra.retain(|t| !trackers.contains(t));
+    }
+
+    /// Get all trackers (original + extra)
+    pub async fn all_trackers(&self) -> Vec<String> {
+        let mut trackers = Vec::new();
+        
+        if let Some(announce) = &self.metainfo.announce {
+            trackers.push(announce.clone());
+        }
+        for tier in &self.metainfo.announce_list {
+            trackers.extend(tier.clone());
+        }
+        
+        let extra = self.extra_trackers.read().await;
+        trackers.extend(extra.iter().cloned());
+        
+        trackers
+    }
+}
+
+impl Clone for TorrentSession {
+    fn clone(&self) -> Self {
+        Self {
+            metainfo: self.metainfo.clone(),
+            peer_id: self.peer_id,
+            pieces: self.pieces.clone(),
+            state: self.state.clone(),
+            stats: self.stats.clone(),
+            connected_peers: self.connected_peers.clone(),
+            peer_stats: self.peer_stats.clone(),
+            available_peers: self.available_peers.clone(),
+            download_path: self.download_path.clone(),
+            sequential: AtomicBool::new(self.sequential.load(Ordering::Relaxed)),
+            stop_tx: self.stop_tx.clone(),
+            total_downloaded: AtomicU64::new(self.total_downloaded.load(Ordering::Relaxed)),
+            total_uploaded: AtomicU64::new(self.total_uploaded.load(Ordering::Relaxed)),
+            port: self.port,
+            extra_trackers: self.extra_trackers.clone(),
         }
     }
 }

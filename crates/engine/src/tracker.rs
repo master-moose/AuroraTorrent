@@ -8,7 +8,7 @@ use std::time::Duration;
 use thiserror::Error;
 use tokio::net::UdpSocket;
 use tokio::time::timeout;
-use tracing::{debug, warn};
+use tracing::debug;
 use url::Url;
 
 #[derive(Debug, Error)]
@@ -83,7 +83,10 @@ pub struct AnnounceResponse {
 }
 
 /// Announce to a tracker
-pub async fn announce(url: &str, params: &AnnounceParams) -> Result<AnnounceResponse, TrackerError> {
+pub async fn announce(
+    url: &str,
+    params: &AnnounceParams,
+) -> Result<AnnounceResponse, TrackerError> {
     let parsed = Url::parse(url).map_err(|e| TrackerError::Parse(e.to_string()))?;
 
     match parsed.scheme() {
@@ -94,7 +97,10 @@ pub async fn announce(url: &str, params: &AnnounceParams) -> Result<AnnounceResp
 }
 
 /// HTTP tracker announce
-async fn announce_http(base_url: &str, params: &AnnounceParams) -> Result<AnnounceResponse, TrackerError> {
+async fn announce_http(
+    base_url: &str,
+    params: &AnnounceParams,
+) -> Result<AnnounceResponse, TrackerError> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()?;
@@ -128,8 +134,7 @@ async fn announce_http(base_url: &str, params: &AnnounceParams) -> Result<Announ
     let response = client.get(&url).send().await?;
     let body = response.bytes().await?;
 
-    let (value, _) = BencodeValue::parse(&body)
-        .map_err(|_| TrackerError::InvalidResponse)?;
+    let (value, _) = BencodeValue::parse(&body).map_err(|_| TrackerError::InvalidResponse)?;
 
     // Check for failure
     if let Some(failure) = value.get("failure reason") {
@@ -147,8 +152,14 @@ async fn announce_http(base_url: &str, params: &AnnounceParams) -> Result<Announ
         .and_then(|v| v.as_integer())
         .map(|v| v as u32);
 
-    let complete = value.get("complete").and_then(|v| v.as_integer()).map(|v| v as u32);
-    let incomplete = value.get("incomplete").and_then(|v| v.as_integer()).map(|v| v as u32);
+    let complete = value
+        .get("complete")
+        .and_then(|v| v.as_integer())
+        .map(|v| v as u32);
+    let incomplete = value
+        .get("incomplete")
+        .and_then(|v| v.as_integer())
+        .map(|v| v as u32);
 
     // Parse peers (compact or dictionary format)
     let peers = if let Some(peers_data) = value.get("peers") {
@@ -183,7 +194,10 @@ async fn announce_http(base_url: &str, params: &AnnounceParams) -> Result<Announ
 }
 
 /// UDP tracker announce (BEP 15)
-async fn announce_udp(url: &Url, params: &AnnounceParams) -> Result<AnnounceResponse, TrackerError> {
+async fn announce_udp(
+    url: &Url,
+    params: &AnnounceParams,
+) -> Result<AnnounceResponse, TrackerError> {
     let host = url.host_str().ok_or(TrackerError::InvalidResponse)?;
     let port = url.port().unwrap_or(80);
     let addr = format!("{}:{}", host, port);
@@ -208,14 +222,19 @@ async fn udp_connect(socket: &UdpSocket) -> Result<u64, TrackerError> {
     // Connect request: 16 bytes
     let mut request = Vec::with_capacity(16);
     request.extend_from_slice(&0x41727101980u64.to_be_bytes()); // Protocol ID
-    request.extend_from_slice(&0u32.to_be_bytes());             // Action: connect
+    request.extend_from_slice(&0u32.to_be_bytes()); // Action: connect
     request.extend_from_slice(&transaction_id.to_be_bytes());
 
     for attempt in 0..3 {
         socket.send(&request).await?;
 
         let mut buf = [0u8; 16];
-        match timeout(Duration::from_secs(5 * (1 << attempt)), socket.recv(&mut buf)).await {
+        match timeout(
+            Duration::from_secs(5 * (1 << attempt)),
+            socket.recv(&mut buf),
+        )
+        .await
+        {
             Ok(Ok(16)) => {
                 let action = u32::from_be_bytes(buf[0..4].try_into().unwrap());
                 let recv_transaction_id = u32::from_be_bytes(buf[4..8].try_into().unwrap());
@@ -261,7 +280,12 @@ async fn udp_announce(
         socket.send(&request).await?;
 
         let mut buf = vec![0u8; 1024];
-        match timeout(Duration::from_secs(5 * (1 << attempt)), socket.recv(&mut buf)).await {
+        match timeout(
+            Duration::from_secs(5 * (1 << attempt)),
+            socket.recv(&mut buf),
+        )
+        .await
+        {
             Ok(Ok(n)) if n >= 20 => {
                 let action = u32::from_be_bytes(buf[0..4].try_into().unwrap());
                 let recv_transaction_id = u32::from_be_bytes(buf[4..8].try_into().unwrap());
@@ -302,4 +326,3 @@ fn parse_compact_peers(data: &[u8]) -> Vec<SocketAddr> {
         })
         .collect()
 }
-

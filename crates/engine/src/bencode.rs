@@ -1,5 +1,5 @@
 //! Bencode parser and encoder for BitTorrent
-//! 
+//!
 //! Bencode format:
 //! - Integers: i<number>e (e.g., i42e)
 //! - Strings: <length>:<string> (e.g., 4:spam)
@@ -48,59 +48,63 @@ impl BencodeValue {
     }
 
     fn parse_integer(data: &[u8]) -> Result<(Self, usize), BencodeError> {
-        let end = data.iter().position(|&b| b == b'e')
+        let end = data
+            .iter()
+            .position(|&b| b == b'e')
             .ok_or(BencodeError::UnexpectedEof)?;
-        
-        let num_str = std::str::from_utf8(&data[1..end])
-            .map_err(|_| BencodeError::InvalidInteger)?;
-        
-        let num: i64 = num_str.parse()
-            .map_err(|_| BencodeError::InvalidInteger)?;
-        
+
+        let num_str =
+            std::str::from_utf8(&data[1..end]).map_err(|_| BencodeError::InvalidInteger)?;
+
+        let num: i64 = num_str.parse().map_err(|_| BencodeError::InvalidInteger)?;
+
         Ok((BencodeValue::Integer(num), end + 1))
     }
 
     fn parse_string(data: &[u8]) -> Result<(Self, usize), BencodeError> {
-        let colon = data.iter().position(|&b| b == b':')
+        let colon = data
+            .iter()
+            .position(|&b| b == b':')
             .ok_or(BencodeError::InvalidStringLength)?;
-        
-        let len_str = std::str::from_utf8(&data[..colon])
+
+        let len_str =
+            std::str::from_utf8(&data[..colon]).map_err(|_| BencodeError::InvalidStringLength)?;
+
+        let len: usize = len_str
+            .parse()
             .map_err(|_| BencodeError::InvalidStringLength)?;
-        
-        let len: usize = len_str.parse()
-            .map_err(|_| BencodeError::InvalidStringLength)?;
-        
+
         let start = colon + 1;
         let end = start + len;
-        
+
         if end > data.len() {
             return Err(BencodeError::UnexpectedEof);
         }
-        
+
         Ok((BencodeValue::String(data[start..end].to_vec()), end))
     }
 
     fn parse_list(data: &[u8]) -> Result<(Self, usize), BencodeError> {
         let mut items = Vec::new();
         let mut pos = 1; // Skip 'l'
-        
+
         while pos < data.len() && data[pos] != b'e' {
             let (value, consumed) = Self::parse(&data[pos..])?;
             items.push(value);
             pos += consumed;
         }
-        
+
         if pos >= data.len() {
             return Err(BencodeError::UnexpectedEof);
         }
-        
+
         Ok((BencodeValue::List(items), pos + 1)) // +1 for 'e'
     }
 
     fn parse_dict(data: &[u8]) -> Result<(Self, usize), BencodeError> {
         let mut dict = BTreeMap::new();
         let mut pos = 1; // Skip 'd'
-        
+
         while pos < data.len() && data[pos] != b'e' {
             // Parse key (must be string)
             let (key, key_consumed) = Self::parse(&data[pos..])?;
@@ -109,18 +113,18 @@ impl BencodeValue {
                 _ => return Err(BencodeError::ExpectedStringKey),
             };
             pos += key_consumed;
-            
+
             // Parse value
             let (value, value_consumed) = Self::parse(&data[pos..])?;
             pos += value_consumed;
-            
+
             dict.insert(key, value);
         }
-        
+
         if pos >= data.len() {
             return Err(BencodeError::UnexpectedEof);
         }
-        
+
         Ok((BencodeValue::Dict(dict), pos + 1)) // +1 for 'e'
     }
 
@@ -228,4 +232,3 @@ mod tests {
         assert_eq!(val.get("foo").and_then(|v| v.as_integer()), Some(42));
     }
 }
-

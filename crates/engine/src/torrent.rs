@@ -69,11 +69,13 @@ impl TorrentMetainfo {
 
     /// Parse from a bencode value
     fn from_bencode(value: &BencodeValue, raw_data: &[u8]) -> Result<Self, TorrentError> {
-        let dict = value.as_dict().ok_or(TorrentError::InvalidStructure)?;
+        let _dict = value.as_dict().ok_or(TorrentError::InvalidStructure)?;
 
         // Get info dictionary
-        let info = value.get("info").ok_or(TorrentError::MissingField("info"))?;
-        let info_dict = info.as_dict().ok_or(TorrentError::InvalidStructure)?;
+        let info = value
+            .get("info")
+            .ok_or(TorrentError::MissingField("info"))?;
+        let _info_dict = info.as_dict().ok_or(TorrentError::InvalidStructure)?;
 
         // Calculate info_hash from raw bytes
         // We need to find the info dict in the raw data and hash it
@@ -128,12 +130,13 @@ impl TorrentMetainfo {
             let mut offset = 0u64;
 
             for file_entry in files_list {
-                let file_dict = file_entry.as_dict().ok_or(TorrentError::InvalidStructure)?;
+                let _file_dict = file_entry.as_dict().ok_or(TorrentError::InvalidStructure)?;
 
                 let length = file_entry
                     .get("length")
                     .and_then(|v| v.as_integer())
-                    .ok_or(TorrentError::MissingField("file length"))? as u64;
+                    .ok_or(TorrentError::MissingField("file length"))?
+                    as u64;
 
                 let path_list = file_entry
                     .get("path")
@@ -141,7 +144,11 @@ impl TorrentMetainfo {
                     .ok_or(TorrentError::MissingField("file path"))?;
 
                 let path: PathBuf = std::iter::once(name.clone())
-                    .chain(path_list.iter().filter_map(|p| p.as_str().map(String::from)))
+                    .chain(
+                        path_list
+                            .iter()
+                            .filter_map(|p| p.as_str().map(String::from)),
+                    )
                     .collect();
 
                 files.push(TorrentFile {
@@ -161,7 +168,10 @@ impl TorrentMetainfo {
         let num_pieces = pieces.len();
 
         // Parse optional fields
-        let announce = value.get("announce").and_then(|v| v.as_str()).map(String::from);
+        let announce = value
+            .get("announce")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         let announce_list = value
             .get("announce-list")
@@ -187,8 +197,14 @@ impl TorrentMetainfo {
             .unwrap_or(false);
 
         let creation_date = value.get("creation date").and_then(|v| v.as_integer());
-        let comment = value.get("comment").and_then(|v| v.as_str()).map(String::from);
-        let created_by = value.get("created by").and_then(|v| v.as_str()).map(String::from);
+        let comment = value
+            .get("comment")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let created_by = value
+            .get("created by")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         Ok(TorrentMetainfo {
             info_hash,
@@ -217,7 +233,7 @@ impl TorrentMetainfo {
             .ok_or(TorrentError::MissingField("info"))?;
 
         let info_start = pos + 6; // Start at 'd'
-        
+
         // Parse to find the matching 'e'
         let (_, consumed) = BencodeValue::parse(&data[info_start..])?;
         let info_bytes = &data[info_start..info_start + consumed];
@@ -225,7 +241,7 @@ impl TorrentMetainfo {
         let mut hasher = Sha1::new();
         hasher.update(info_bytes);
         let result = hasher.finalize();
-        
+
         let mut hash = [0u8; 20];
         hash.copy_from_slice(&result);
         Ok(hash)
@@ -284,7 +300,7 @@ impl TorrentMetainfo {
 
     fn decode_base32(input: &str) -> Result<[u8; 20], TorrentError> {
         const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-        
+
         let input = input.to_uppercase();
         let mut result = [0u8; 20];
         let mut buffer = 0u64;
@@ -296,7 +312,7 @@ impl TorrentMetainfo {
                 .iter()
                 .position(|&x| x == c)
                 .ok_or(TorrentError::InvalidMagnet)? as u64;
-            
+
             buffer = (buffer << 5) | value;
             bits += 5;
 
@@ -367,3 +383,189 @@ impl MagnetInfo {
     }
 }
 
+/// Create a .torrent file from a file or directory
+pub async fn create_torrent(
+    source_path: &std::path::Path,
+    trackers: Vec<String>,
+    comment: Option<String>,
+    is_private: bool,
+    piece_length: u64,
+) -> Result<Vec<u8>, TorrentError> {
+    use crate::bencode::BencodeValue;
+    use std::collections::BTreeMap;
+    use tokio::fs;
+    use tokio::io::AsyncReadExt;
+
+    let mut info: BTreeMap<Vec<u8>, BencodeValue> = BTreeMap::new();
+    
+    // Get the name
+    let name = source_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .ok_or(TorrentError::InvalidStructure)?;
+    
+    info.insert(b"name".to_vec(), BencodeValue::String(name.clone().into_bytes()));
+    info.insert(b"piece length".to_vec(), BencodeValue::Integer(piece_length as i64));
+
+    // Collect files and compute pieces
+    let mut pieces_data: Vec<u8> = Vec::new();
+    let mut total_size: u64 = 0;
+    let mut piece_buffer: Vec<u8> = Vec::with_capacity(piece_length as usize);
+
+    if source_path.is_file() {
+        // Single file torrent
+        let metadata = fs::metadata(source_path).await?;
+        total_size = metadata.len();
+        info.insert(b"length".to_vec(), BencodeValue::Integer(total_size as i64));
+
+        // Read file and compute piece hashes
+        let mut file = fs::File::open(source_path).await?;
+        let mut buffer = vec![0u8; 65536]; // 64KB read buffer
+
+        loop {
+            let bytes_read = file.read(&mut buffer).await?;
+            if bytes_read == 0 {
+                break;
+            }
+
+            let mut offset = 0;
+            while offset < bytes_read {
+                let remaining = piece_length as usize - piece_buffer.len();
+                let to_copy = std::cmp::min(remaining, bytes_read - offset);
+                piece_buffer.extend_from_slice(&buffer[offset..offset + to_copy]);
+                offset += to_copy;
+
+                if piece_buffer.len() >= piece_length as usize {
+                    // Hash this piece
+                    let mut hasher = Sha1::new();
+                    hasher.update(&piece_buffer);
+                    pieces_data.extend_from_slice(&hasher.finalize());
+                    piece_buffer.clear();
+                }
+            }
+        }
+    } else if source_path.is_dir() {
+        // Multi-file torrent
+        let mut files_list: Vec<BencodeValue> = Vec::new();
+        let mut all_files: Vec<(PathBuf, u64)> = Vec::new();
+
+        // Collect all files recursively
+        fn collect_files_sync(dir: &std::path::Path, files: &mut Vec<(PathBuf, u64)>) -> std::io::Result<()> {
+            let entries: Vec<_> = std::fs::read_dir(dir)?.collect();
+            for entry in entries {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_file() {
+                    let len = std::fs::metadata(&path)?.len();
+                    files.push((path, len));
+                } else if path.is_dir() {
+                    collect_files_sync(&path, files)?;
+                }
+            }
+            Ok(())
+        }
+        
+        collect_files_sync(source_path, &mut all_files)?;
+        all_files.sort_by(|a, b| a.0.cmp(&b.0));
+
+        for (file_path, file_len) in &all_files {
+            let relative_path = file_path
+                .strip_prefix(source_path)
+                .unwrap_or(file_path);
+            
+            let path_components: Vec<BencodeValue> = relative_path
+                .components()
+                .filter_map(|c| {
+                    if let std::path::Component::Normal(s) = c {
+                        Some(BencodeValue::String(s.to_string_lossy().into_owned().into_bytes()))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            let mut file_dict: BTreeMap<Vec<u8>, BencodeValue> = BTreeMap::new();
+            file_dict.insert(b"length".to_vec(), BencodeValue::Integer(*file_len as i64));
+            file_dict.insert(b"path".to_vec(), BencodeValue::List(path_components));
+            files_list.push(BencodeValue::Dict(file_dict));
+
+            // Read file content for hashing
+            let mut file = std::fs::File::open(file_path)?;
+            use std::io::Read;
+            let mut buffer = vec![0u8; 65536];
+
+            loop {
+                let bytes_read = file.read(&mut buffer)?;
+                if bytes_read == 0 {
+                    break;
+                }
+
+                let mut offset = 0;
+                while offset < bytes_read {
+                    let remaining = piece_length as usize - piece_buffer.len();
+                    let to_copy = std::cmp::min(remaining, bytes_read - offset);
+                    piece_buffer.extend_from_slice(&buffer[offset..offset + to_copy]);
+                    offset += to_copy;
+
+                    if piece_buffer.len() >= piece_length as usize {
+                        let mut hasher = Sha1::new();
+                        hasher.update(&piece_buffer);
+                        pieces_data.extend_from_slice(&hasher.finalize());
+                        piece_buffer.clear();
+                    }
+                }
+            }
+
+            total_size += file_len;
+        }
+
+        info.insert(b"files".to_vec(), BencodeValue::List(files_list));
+    } else {
+        return Err(TorrentError::InvalidStructure);
+    }
+
+    // Hash any remaining data in the buffer
+    if !piece_buffer.is_empty() {
+        let mut hasher = Sha1::new();
+        hasher.update(&piece_buffer);
+        pieces_data.extend_from_slice(&hasher.finalize());
+    }
+
+    info.insert(b"pieces".to_vec(), BencodeValue::String(pieces_data));
+
+    if is_private {
+        info.insert(b"private".to_vec(), BencodeValue::Integer(1));
+    }
+
+    // Build the root dictionary
+    let mut root: BTreeMap<Vec<u8>, BencodeValue> = BTreeMap::new();
+    
+    if !trackers.is_empty() {
+        root.insert(b"announce".to_vec(), BencodeValue::String(trackers[0].clone().into_bytes()));
+        
+        if trackers.len() > 1 {
+            let announce_list: Vec<BencodeValue> = trackers
+                .iter()
+                .map(|t| BencodeValue::List(vec![BencodeValue::String(t.clone().into_bytes())]))
+                .collect();
+            root.insert(b"announce-list".to_vec(), BencodeValue::List(announce_list));
+        }
+    }
+
+    if let Some(c) = comment {
+        root.insert(b"comment".to_vec(), BencodeValue::String(c.into_bytes()));
+    }
+
+    root.insert(b"created by".to_vec(), BencodeValue::String(b"AuroraTorrent".to_vec()));
+    
+    let creation_date = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    root.insert(b"creation date".to_vec(), BencodeValue::Integer(creation_date));
+
+    root.insert(b"info".to_vec(), BencodeValue::Dict(info));
+
+    // Encode to bytes
+    Ok(BencodeValue::Dict(root).encode())
+}

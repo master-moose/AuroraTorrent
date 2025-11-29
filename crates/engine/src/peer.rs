@@ -5,13 +5,11 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::io;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
 use tokio::time::timeout;
-use tracing::{debug, trace, warn};
+use tracing::debug;
 
 /// Protocol identifier
 const PROTOCOL: &[u8] = b"BitTorrent protocol";
@@ -61,12 +59,30 @@ pub enum PeerMessage {
     Unchoke,
     Interested,
     NotInterested,
-    Have { piece_index: u32 },
-    Bitfield { bitfield: Vec<u8> },
-    Request { index: u32, begin: u32, length: u32 },
-    Piece { index: u32, begin: u32, block: Bytes },
-    Cancel { index: u32, begin: u32, length: u32 },
-    Port { port: u16 },
+    Have {
+        piece_index: u32,
+    },
+    Bitfield {
+        bitfield: Vec<u8>,
+    },
+    Request {
+        index: u32,
+        begin: u32,
+        length: u32,
+    },
+    Piece {
+        index: u32,
+        begin: u32,
+        block: Bytes,
+    },
+    Cancel {
+        index: u32,
+        begin: u32,
+        length: u32,
+    },
+    Port {
+        port: u16,
+    },
 }
 
 impl PeerMessage {
@@ -96,7 +112,11 @@ impl PeerMessage {
                 buf.put_slice(bitfield);
                 buf.freeze()
             }
-            PeerMessage::Request { index, begin, length } => {
+            PeerMessage::Request {
+                index,
+                begin,
+                length,
+            } => {
                 let mut buf = BytesMut::with_capacity(17);
                 buf.put_u32(13);
                 buf.put_u8(MessageId::Request as u8);
@@ -105,7 +125,11 @@ impl PeerMessage {
                 buf.put_u32(*length);
                 buf.freeze()
             }
-            PeerMessage::Piece { index, begin, block } => {
+            PeerMessage::Piece {
+                index,
+                begin,
+                block,
+            } => {
                 let mut buf = BytesMut::with_capacity(13 + block.len());
                 buf.put_u32(9 + block.len() as u32);
                 buf.put_u8(MessageId::Piece as u8);
@@ -114,7 +138,11 @@ impl PeerMessage {
                 buf.put_slice(block);
                 buf.freeze()
             }
-            PeerMessage::Cancel { index, begin, length } => {
+            PeerMessage::Cancel {
+                index,
+                begin,
+                length,
+            } => {
                 let mut buf = BytesMut::with_capacity(17);
                 buf.put_u32(13);
                 buf.put_u8(MessageId::Cancel as u8);
@@ -165,7 +193,10 @@ impl PeerMessage {
             }),
             Ok(MessageId::Request) => {
                 if data.remaining() < 12 {
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, "Request too short"));
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Request too short",
+                    ));
                 }
                 Ok(PeerMessage::Request {
                     index: data.get_u32(),
@@ -175,7 +206,10 @@ impl PeerMessage {
             }
             Ok(MessageId::Piece) => {
                 if data.remaining() < 8 {
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, "Piece too short"));
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Piece too short",
+                    ));
                 }
                 let index = data.get_u32();
                 let begin = data.get_u32();
@@ -187,7 +221,10 @@ impl PeerMessage {
             }
             Ok(MessageId::Cancel) => {
                 if data.remaining() < 12 {
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, "Cancel too short"));
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Cancel too short",
+                    ));
                 }
                 Ok(PeerMessage::Cancel {
                     index: data.get_u32(),
@@ -258,12 +295,9 @@ impl PeerConnection {
     ) -> io::Result<Self> {
         debug!("Connecting to peer: {}", addr);
 
-        let stream = timeout(
-            Duration::from_secs(timeout_secs),
-            TcpStream::connect(addr),
-        )
-        .await
-        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "Connection timeout"))??;
+        let stream = timeout(Duration::from_secs(timeout_secs), TcpStream::connect(addr))
+            .await
+            .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "Connection timeout"))??;
 
         let mut conn = Self {
             addr,
@@ -283,7 +317,7 @@ impl PeerConnection {
 
     /// Accept incoming connection
     pub async fn accept(
-        mut stream: TcpStream,
+        stream: TcpStream,
         addr: SocketAddr,
         info_hash: [u8; 20],
         our_peer_id: [u8; 20],
@@ -303,7 +337,7 @@ impl PeerConnection {
         // For incoming, we receive handshake first
         conn.receive_handshake(info_hash).await?;
         conn.send_handshake(info_hash, our_peer_id).await?;
-        
+
         Ok(conn)
     }
 
@@ -313,7 +347,11 @@ impl PeerConnection {
         Ok(())
     }
 
-    async fn send_handshake(&mut self, info_hash: [u8; 20], our_peer_id: [u8; 20]) -> io::Result<()> {
+    async fn send_handshake(
+        &mut self,
+        info_hash: [u8; 20],
+        our_peer_id: [u8; 20],
+    ) -> io::Result<()> {
         let mut handshake = Vec::with_capacity(68);
         handshake.push(PROTOCOL.len() as u8);
         handshake.extend_from_slice(PROTOCOL);
@@ -357,11 +395,11 @@ impl PeerConnection {
     pub async fn send(&mut self, msg: PeerMessage) -> io::Result<()> {
         let bytes = msg.encode();
         self.stream.write_all(&bytes).await?;
-        
+
         if let PeerMessage::Piece { block, .. } = &msg {
             self.bytes_uploaded += block.len() as u64;
         }
-        
+
         Ok(())
     }
 
@@ -387,13 +425,13 @@ impl PeerConnection {
         // Read message body
         let mut body = vec![0u8; len];
         self.stream.read_exact(&mut body).await?;
-        
+
         let msg = PeerMessage::decode(Bytes::from(body))?;
-        
+
         if let PeerMessage::Piece { block, .. } = &msg {
             self.bytes_downloaded += block.len() as u64;
         }
-        
+
         Ok(msg)
     }
 
@@ -480,4 +518,3 @@ pub fn generate_peer_id() -> [u8; 20] {
     }
     id
 }
-

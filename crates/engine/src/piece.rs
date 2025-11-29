@@ -8,10 +8,9 @@ use parking_lot::RwLock;
 use sha1::{Digest, Sha1};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, SeekFrom};
-use tracing::{debug, trace, warn};
+use tracing::{debug, warn};
 
 /// Standard block size (16 KB)
 pub const BLOCK_SIZE: u32 = 16 * 1024;
@@ -88,7 +87,11 @@ impl PieceManager {
 
         let files = files
             .into_iter()
-            .map(|(path, length, offset)| FileEntry { path, length, offset })
+            .map(|(path, length, offset)| FileEntry {
+                path,
+                length,
+                offset,
+            })
             .collect();
 
         Self {
@@ -156,7 +159,7 @@ impl PieceManager {
     /// Select next piece to download based on strategy
     pub fn select_piece(&self, peer_has: &[u8]) -> Option<u32> {
         let priority = self.priority_pieces.read();
-        
+
         // First check priority pieces
         for &piece in priority.iter() {
             if !self.have[piece as usize] && Self::peer_has_piece(peer_has, piece) {
@@ -231,8 +234,8 @@ impl PieceManager {
         let mut in_progress = self.in_progress.write();
 
         if let Some(piece) = in_progress.get_mut(&piece_idx) {
-            if !piece.blocks.contains_key(&offset) {
-                piece.blocks.insert(offset, data);
+            if let std::collections::hash_map::Entry::Vacant(e) = piece.blocks.entry(offset) {
+                e.insert(data);
                 piece.received_blocks += 1;
                 return piece.received_blocks >= piece.expected_blocks;
             }
@@ -310,10 +313,11 @@ impl PieceManager {
                     tokio::fs::create_dir_all(parent).await?;
                 }
 
-                // Open file and write
+                // Open file and write (truncate: false to allow partial writes to existing files)
                 let mut f = OpenOptions::new()
                     .write(true)
                     .create(true)
+                    .truncate(false)
                     .open(&full_path)
                     .await?;
 
@@ -324,7 +328,8 @@ impl PieceManager {
                 }
 
                 f.seek(SeekFrom::Start(file_offset)).await?;
-                f.write_all(&data[data_offset..data_offset + data_len]).await?;
+                f.write_all(&data[data_offset..data_offset + data_len])
+                    .await?;
                 f.flush().await?;
             }
         }
@@ -351,11 +356,12 @@ impl PieceManager {
                 let file_offset = overlap_start - file_start;
 
                 let full_path = self.download_path.join(&self.name).join(&file.path);
-                
+
                 if full_path.exists() {
                     let mut f = File::open(&full_path).await?;
                     f.seek(SeekFrom::Start(file_offset)).await?;
-                    f.read_exact(&mut result[result_offset..result_offset + read_len]).await?;
+                    f.read_exact(&mut result[result_offset..result_offset + read_len])
+                        .await?;
                     bytes_read += read_len;
                 }
             }
@@ -431,5 +437,42 @@ impl PieceManager {
     pub fn cancel_piece(&self, piece_idx: u32) {
         self.in_progress.write().remove(&piece_idx);
     }
-}
 
+    /// Verify all pieces from disk (force recheck)
+    pub async fn verify_all(&mut self) {
+        debug!("Starting full piece verification...");
+        
+        // Reset all pieces to unverified
+        self.have.fill(false);
+        self.in_progress.write().clear();
+        
+        for piece_idx in 0..self.num_pieces {
+            let piece_size = self.piece_size(piece_idx as u32) as usize;
+            let piece_start = piece_idx as u64 * self.piece_length;
+            
+            // Try to read piece data from disk
+            match self.read_data(piece_start, piece_size).await {
+                Ok(data) => {
+                    // Verify hash
+                    let mut hasher = Sha1::new();
+                    hasher.update(&data);
+                    let hash: [u8; 20] = hasher.finalize().into();
+                    
+                    if hash == self.piece_hashes[piece_idx] {
+                        self.have.set(piece_idx, true);
+                        debug!("Piece {} verified", piece_idx);
+                    } else {
+                        debug!("Piece {} hash mismatch", piece_idx);
+                    }
+                }
+                Err(_) => {
+                    // Piece not available on disk
+                    debug!("Piece {} not available on disk", piece_idx);
+                }
+            }
+        }
+        
+        let verified = self.have.count_ones();
+        debug!("Verification complete: {}/{} pieces valid", verified, self.num_pieces);
+    }
+}

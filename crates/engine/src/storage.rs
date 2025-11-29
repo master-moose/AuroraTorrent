@@ -33,7 +33,7 @@ impl Storage {
     /// Pre-allocate space for a file
     pub async fn allocate_file(&self, relative_path: &str, size: u64) -> std::io::Result<()> {
         let full_path = self.base_path.join(relative_path);
-        
+
         if let Some(parent) = full_path.parent() {
             fs::create_dir_all(parent).await?;
         }
@@ -41,6 +41,7 @@ impl Storage {
         let file = OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(false)
             .open(&full_path)
             .await?;
 
@@ -56,10 +57,11 @@ impl Storage {
         data: &[u8],
     ) -> std::io::Result<()> {
         let full_path = self.base_path.join(relative_path);
-        
+
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(false)
             .open(&full_path)
             .await?;
 
@@ -78,7 +80,7 @@ impl Storage {
         length: usize,
     ) -> std::io::Result<Vec<u8>> {
         let full_path = self.base_path.join(relative_path);
-        
+
         let mut file = File::open(&full_path).await?;
         file.seek(SeekFrom::Start(offset)).await?;
 
