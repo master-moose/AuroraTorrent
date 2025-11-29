@@ -1,18 +1,28 @@
-import { Home, Library, Search, Settings, Download, Zap } from 'lucide-react';
+import { Home, Library, Search, Settings, Download, Zap, Rss, PanelLeftClose, PanelLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface SidebarProps {
     currentView: string;
-    setView: (v: 'home' | 'library' | 'search') => void;
+    setView: (v: 'home' | 'library' | 'search' | 'rss') => void;
     activeDownloads: number;
     onOpenSettings: () => void;
+    showFilters?: boolean;
+    onToggleFilters?: () => void;
 }
 
-export default function Sidebar({ currentView, setView, activeDownloads, onOpenSettings }: SidebarProps) {
+export default function Sidebar({ 
+    currentView, 
+    setView, 
+    activeDownloads, 
+    onOpenSettings,
+    showFilters = true,
+    onToggleFilters
+}: SidebarProps) {
     const navItems = [
         { id: 'home', icon: Home, label: 'Home' },
         { id: 'library', icon: Library, label: 'Library' },
         { id: 'search', icon: Search, label: 'Search' },
+        { id: 'rss', icon: Rss, label: 'RSS Feeds' },
     ] as const;
 
     return (
@@ -44,7 +54,7 @@ export default function Sidebar({ currentView, setView, activeDownloads, onOpenS
                     >
                         <Icon size={20} />
                         <span className="font-medium">{label}</span>
-                        {id === 'library' && currentView === id && (
+                        {currentView === id && (
                             <motion.div 
                                 layoutId="nav-indicator"
                                 className="ml-auto w-1.5 h-1.5 rounded-full bg-aurora-cyan"
@@ -53,6 +63,24 @@ export default function Sidebar({ currentView, setView, activeDownloads, onOpenS
                     </motion.button>
                 ))}
             </nav>
+
+            {/* Filter Toggle (only show on library view) */}
+            {currentView === 'library' && onToggleFilters && (
+                <button
+                    onClick={onToggleFilters}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 mb-2 ${
+                        showFilters 
+                            ? 'bg-aurora-violet/10 text-aurora-violet' 
+                            : 'text-aurora-dim hover:text-aurora-text hover:bg-aurora-night/50'
+                    }`}
+                >
+                    {showFilters ? <PanelLeftClose size={20} /> : <PanelLeft size={20} />}
+                    <span className="font-medium">Filters</span>
+                    {showFilters && (
+                        <span className="ml-auto text-xs bg-aurora-violet/20 px-2 py-0.5 rounded">On</span>
+                    )}
+                </button>
+            )}
 
             {/* Active Downloads Card */}
             {activeDownloads > 0 && (
@@ -84,7 +112,7 @@ export default function Sidebar({ currentView, setView, activeDownloads, onOpenS
 
             {/* Version */}
             <div className="px-4 py-2 mt-2">
-                <p className="text-xs text-aurora-muted">v0.1.0</p>
+                <p className="text-xs text-aurora-muted">v0.1.0 • Enhanced</p>
             </div>
         </div>
     );

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from './components/Sidebar';
 import LibraryGrid from './components/LibraryGrid';
@@ -8,8 +8,21 @@ import SettingsModal from './components/SettingsModal';
 import TorrentDetails from './components/TorrentDetails';
 import Toast from './components/Toast';
 import AddTorrentModal from './components/AddTorrentModal';
-import { sendRpc } from './rpc';
-import { Torrent } from './types';
+import ErrorBoundary from './components/ErrorBoundary';
+import FilterSidebar, { TorrentFilter, filterTorrents, defaultFilter } from './components/FilterSidebar';
+import StatusBar, { defaultSessionStats } from './components/StatusBar';
+import SpeedGraph, { useSpeedSamples } from './components/SpeedGraph';
+import {
+    listTorrents,
+    addTorrent as rpcAddTorrent,
+    addTorrentFile as rpcAddTorrentFile,
+    startTorrent,
+    pauseTorrent,
+    removeTorrent,
+    streamTorrent,
+    getConfig,
+} from './rpc';
+import { Torrent, SessionStats, Category, Config } from './types';
 
 export interface ToastMessage {
     id: string;
@@ -18,14 +31,23 @@ export interface ToastMessage {
 }
 
 function App() {
-    const [view, setView] = useState<'home' | 'library' | 'search'>('home');
+    const [view, setView] = useState<'home' | 'library' | 'search' | 'rss'>('home');
     const [torrents, setTorrents] = useState<Torrent[]>([]);
-    const [activeStreamUrl, setActiveStreamUrl] = useState<string | null>(null);
+    const [activeStream, setActiveStream] = useState<{
+        url: string;
+        torrentId: string;
+        fileIndex: number;
+        fileName?: string;
+    } | null>(null);
     const [showSettings, setShowSettings] = useState(false);
     const [showAddTorrent, setShowAddTorrent] = useState(false);
     const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null);
     const [toasts, setToasts] = useState<ToastMessage[]>([]);
     const [isDragging, setIsDragging] = useState(false);
+    const [showFilters, setShowFilters] = useState(true);
+    const [filter, setFilter] = useState<TorrentFilter>(defaultFilter);
+    const [config, setConfig] = useState<Partial<Config>>({});
+    const [altSpeedEnabled, setAltSpeedEnabled] = useState(false);
 
     const addToast = useCallback((type: ToastMessage['type'], message: string) => {
         const id = Date.now().toString();
@@ -39,40 +61,115 @@ function App() {
         setToasts(prev => prev.filter(t => t.id !== id));
     }, []);
 
+    // Track mounted state to prevent state updates after unmount
+    const isMountedRef = useRef(true);
+
     useEffect(() => {
+        isMountedRef.current = true;
+
         const fetchTorrents = async () => {
             try {
-                const resp = await sendRpc('ListTorrents');
-                if (resp && resp.result) {
-                    setTorrents(resp.result);
+                const torrents = await listTorrents();
+                if (isMountedRef.current) {
+                    setTorrents(torrents);
                 }
             } catch (e) {
                 console.error('Failed to fetch torrents:', e);
             }
         };
 
+        const fetchConfig = async () => {
+            try {
+                const cfg = await getConfig();
+                if (cfg && isMountedRef.current) {
+                    setConfig(cfg);
+                    setAltSpeedEnabled(cfg.use_alt_speed_limits || false);
+                }
+            } catch (e) {
+                console.error('Failed to fetch config:', e);
+            }
+        };
+
         fetchTorrents();
+        fetchConfig();
         const interval = setInterval(fetchTorrents, 1000);
-        return () => clearInterval(interval);
+
+        return () => {
+            isMountedRef.current = false;
+            clearInterval(interval);
+        };
     }, []);
 
-    const handleStreamStart = async (id: string) => {
-        const resp = await sendRpc('StreamTorrent', { id });
-        if (resp?.result?.url) {
-            setActiveStreamUrl(resp.result.url);
+    // Calculate session stats from torrents
+    const sessionStats: SessionStats = useMemo(() => {
+        const stats = { ...defaultSessionStats };
+        stats.total_torrents = torrents.length;
+        
+        for (const t of torrents) {
+            stats.download_rate += t.download_speed;
+            stats.upload_rate += t.upload_speed;
+            stats.total_downloaded_session += t.downloaded_session;
+            stats.total_uploaded_session += t.uploaded_session;
+            stats.total_downloaded += t.downloaded;
+            stats.total_uploaded += t.uploaded;
+            stats.peers_connected += t.connected_seeds + t.connected_leechers;
+            
+            const status = t.status.toLowerCase();
+            if (status === 'downloading' || status === 'forceddownloading') {
+                stats.downloading_torrents++;
+            } else if (status === 'seeding' || status === 'forcedseeding') {
+                stats.seeding_torrents++;
+            } else if (status === 'paused') {
+                stats.paused_torrents++;
+            } else if (status === 'checking') {
+                stats.checking_torrents++;
+            } else if (status === 'error') {
+                stats.error_torrents++;
+            }
+        }
+        
+        if (stats.total_downloaded > 0) {
+            stats.global_ratio = stats.total_uploaded / stats.total_downloaded;
+        }
+        
+        return stats;
+    }, [torrents]);
+
+    // Speed samples for graphing
+    const speedSamples = useSpeedSamples(sessionStats.download_rate, sessionStats.upload_rate);
+
+    // Filtered torrents
+    const filteredTorrents = useMemo(() => {
+        return filterTorrents(torrents, filter);
+    }, [torrents, filter]);
+
+    // Categories and tags from config
+    const categories = (config.categories || {}) as Record<string, Category>;
+    const tags = (config.tags || []) as string[];
+
+    const handleStreamStart = async (id: string, fileIndex: number = 0) => {
+        const result = await streamTorrent(id);
+        const torrent = torrents.find(t => t.id === id);
+        if (result.url) {
+            setActiveStream({
+                url: result.url,
+                torrentId: id,
+                fileIndex,
+                fileName: torrent?.name,
+            });
             addToast('info', 'Starting stream...');
         } else {
-            addToast('error', resp?.error || 'Failed to start stream');
+            addToast('error', result.error || 'Failed to start stream');
         }
     };
 
     const handleAddTorrent = async (magnet: string) => {
-        const resp = await sendRpc('AddTorrent', { magnet });
-        if (resp?.result) {
-            addToast('success', `Added: ${resp.result.name || 'New torrent'}`);
+        const result = await rpcAddTorrent(magnet);
+        if (!result.error) {
+            addToast('success', `Added: ${result.name || 'New torrent'}`);
             setShowAddTorrent(false);
         } else {
-            addToast('error', resp?.error || 'Failed to add torrent');
+            addToast('error', result.error || 'Failed to add torrent');
         }
     };
 
@@ -80,42 +177,66 @@ function App() {
         const reader = new FileReader();
         reader.onload = async (e) => {
             const content = e.target?.result as string;
-            const resp = await sendRpc('AddTorrentFile', { 
-                name: file.name, 
-                content: content.split(',')[1] || content 
-            });
-            if (resp?.result) {
-                addToast('success', `Added: ${resp.result.name || file.name}`);
+            const result = await rpcAddTorrentFile(
+                file.name,
+                content.split(',')[1] || content
+            );
+            if (!result.error) {
+                addToast('success', `Added: ${result.name || file.name}`);
                 setShowAddTorrent(false);
             } else {
-                addToast('error', resp?.error || 'Failed to add torrent file');
+                addToast('error', result.error || 'Failed to add torrent file');
             }
         };
         reader.readAsDataURL(file);
     };
 
     const handlePauseTorrent = async (id: string) => {
-        const resp = await sendRpc('PauseTorrent', { id });
-        if (resp?.result) {
+        const result = await pauseTorrent(id);
+        if (!result.error) {
             addToast('info', 'Torrent paused');
         }
     };
 
     const handleResumeTorrent = async (id: string) => {
-        const resp = await sendRpc('StartTorrent', { id });
-        if (resp?.result) {
+        const result = await startTorrent(id);
+        if (!result.error) {
             addToast('info', 'Torrent resumed');
         }
     };
 
-    const handleRemoveTorrent = async (id: string) => {
-        const resp = await sendRpc('RemoveTorrent', { id });
-        if (resp?.result) {
-            addToast('success', 'Torrent removed');
+    const handleRemoveTorrent = async (id: string, deleteFiles: boolean = false) => {
+        const result = await removeTorrent(id, deleteFiles);
+        if (!result.error) {
+            addToast('success', deleteFiles ? 'Torrent and files removed' : 'Torrent removed');
             setSelectedTorrent(null);
         } else {
-            addToast('error', resp?.error || 'Failed to remove torrent');
+            addToast('error', result.error || 'Failed to remove torrent');
         }
+    };
+
+    const handleRefreshTorrents = useCallback(async () => {
+        try {
+            const updatedTorrents = await listTorrents();
+            if (isMountedRef.current) {
+                setTorrents(updatedTorrents);
+                // Update selected torrent if still open
+                if (selectedTorrent) {
+                    const updated = updatedTorrents.find(t => t.id === selectedTorrent.id);
+                    if (updated) {
+                        setSelectedTorrent(updated);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Failed to refresh torrents:', e);
+        }
+    }, [selectedTorrent]);
+
+    const handleToggleAltSpeed = () => {
+        setAltSpeedEnabled(!altSpeedEnabled);
+        // TODO: Call RPC to toggle alt speed
+        addToast('info', altSpeedEnabled ? 'Alternative speed limits disabled' : 'Alternative speed limits enabled');
     };
 
     // Drag and drop handlers
@@ -152,6 +273,7 @@ function App() {
     ) || torrents[0];
 
     return (
+        <ErrorBoundary>
         <div 
             className="flex flex-col h-screen w-screen overflow-hidden relative"
             onDragOver={handleDragOver}
@@ -185,10 +307,13 @@ function App() {
 
             {/* Modals */}
             <AnimatePresence>
-                {activeStreamUrl && (
+                {activeStream && (
                     <VideoPlayer
-                        streamUrl={activeStreamUrl}
-                        onClose={() => setActiveStreamUrl(null)}
+                        streamUrl={activeStream.url}
+                        torrentId={activeStream.torrentId}
+                        fileIndex={activeStream.fileIndex}
+                        fileName={activeStream.fileName}
+                        onClose={() => setActiveStream(null)}
                     />
                 )}
                 {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
@@ -207,6 +332,7 @@ function App() {
                         onResume={handleResumeTorrent}
                         onRemove={handleRemoveTorrent}
                         onStream={handleStreamStart}
+                        onRefresh={handleRefreshTorrents}
                     />
                 )}
             </AnimatePresence>
@@ -227,16 +353,44 @@ function App() {
                     setView={setView} 
                     activeDownloads={activeDownloads}
                     onOpenSettings={() => setShowSettings(true)}
+                    showFilters={showFilters}
+                    onToggleFilters={() => setShowFilters(!showFilters)}
                 />
 
+                {/* Filter Sidebar */}
+                <AnimatePresence>
+                    {showFilters && view === 'library' && (
+                        <motion.div
+                            initial={{ width: 0, opacity: 0 }}
+                            animate={{ width: 'auto', opacity: 1 }}
+                            exit={{ width: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="border-r border-aurora-border/30 bg-aurora-void/30"
+                        >
+                            <FilterSidebar
+                                torrents={torrents}
+                                categories={categories}
+                                tags={tags}
+                                selectedFilter={filter}
+                                onFilterChange={setFilter}
+                            />
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 <main className="flex-1 overflow-y-auto p-6">
-                    <header className="flex justify-between items-center mb-8">
+                    <header className="flex justify-between items-center mb-6">
                         <div>
                             <h1 className="text-3xl font-bold text-aurora-text">
-                                {view === 'home' ? 'Welcome Back' : view === 'library' ? 'Your Library' : 'Search'}
+                                {view === 'home' ? 'Welcome Back' : 
+                                 view === 'library' ? 'Your Library' : 
+                                 view === 'rss' ? 'RSS Feeds' : 'Search'}
                             </h1>
                             <p className="text-aurora-dim mt-1">
-                                {torrents.length} torrents • {activeDownloads} active
+                                {view === 'library' && filter.status !== 'all' 
+                                    ? `${filteredTorrents.length} of ${torrents.length} torrents • ${activeDownloads} active`
+                                    : `${torrents.length} torrents • ${activeDownloads} active`
+                                }
                             </p>
                         </div>
                         <button 
@@ -254,22 +408,39 @@ function App() {
                             animate={{ opacity: 1, y: 0 }}
                             className="space-y-8"
                         >
+                            {/* Speed Graph */}
+                            {speedSamples.length > 1 && (
+                                <SpeedGraph 
+                                    samples={speedSamples} 
+                                    height={140}
+                                    className="mb-6"
+                                />
+                            )}
+
                             {/* Quick stats */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                 <div className="card p-6">
                                     <div className="text-aurora-dim text-sm mb-1">Active Downloads</div>
-                                    <div className="text-3xl font-bold text-aurora-cyan">{activeDownloads}</div>
+                                    <div className="text-3xl font-bold text-aurora-cyan">{sessionStats.downloading_torrents}</div>
                                 </div>
                                 <div className="card p-6">
                                     <div className="text-aurora-dim text-sm mb-1">Download Speed</div>
                                     <div className="text-3xl font-bold text-aurora-teal">
-                                        {formatSpeed(torrents.reduce((sum, t) => sum + t.download_speed, 0))}
+                                        {formatSpeed(sessionStats.download_rate)}
                                     </div>
                                 </div>
                                 <div className="card p-6">
                                     <div className="text-aurora-dim text-sm mb-1">Upload Speed</div>
                                     <div className="text-3xl font-bold text-aurora-violet">
-                                        {formatSpeed(torrents.reduce((sum, t) => sum + t.upload_speed, 0))}
+                                        {formatSpeed(sessionStats.upload_rate)}
+                                    </div>
+                                </div>
+                                <div className="card p-6">
+                                    <div className="text-aurora-dim text-sm mb-1">Share Ratio</div>
+                                    <div className={`text-3xl font-bold ${
+                                        sessionStats.global_ratio >= 1 ? 'text-aurora-teal' : 'text-aurora-dim'
+                                    }`}>
+                                        {sessionStats.global_ratio.toFixed(2)}
                                     </div>
                                 </div>
                             </div>
@@ -279,7 +450,7 @@ function App() {
                                 <div>
                                     <h2 className="text-xl font-semibold mb-4">Recent Activity</h2>
                                     <LibraryGrid 
-                                        torrents={torrents.slice(0, 5)} 
+                                        torrents={torrents.slice(0, 6)} 
                                         onStream={handleStreamStart}
                                         onSelect={setSelectedTorrent}
                                         compact
@@ -305,7 +476,7 @@ function App() {
 
                     {view === 'library' && (
                         <LibraryGrid 
-                            torrents={torrents} 
+                            torrents={filteredTorrents} 
                             onStream={handleStreamStart}
                             onSelect={setSelectedTorrent}
                             onAdd={() => setShowAddTorrent(true)}
@@ -321,18 +492,44 @@ function App() {
                             <div className="text-6xl mb-4 opacity-50">🔍</div>
                             <h2 className="text-xl font-semibold mb-2">Search Coming Soon</h2>
                             <p className="text-aurora-dim">
-                                Search through your torrents and discover new content
+                                Search through your torrents and discover new content with search plugins
+                            </p>
+                        </motion.div>
+                    )}
+
+                    {view === 'rss' && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="text-center py-12"
+                        >
+                            <div className="text-6xl mb-4 opacity-50">📡</div>
+                            <h2 className="text-xl font-semibold mb-2">RSS Feeds Coming Soon</h2>
+                            <p className="text-aurora-dim">
+                                Subscribe to RSS feeds and automatically download new torrents
                             </p>
                         </motion.div>
                     )}
                 </main>
             </div>
 
-            <NowPlayingFooter 
-                torrent={activeTorrent} 
-                onStream={activeTorrent ? () => handleStreamStart(activeTorrent.id) : undefined}
+            {/* Now Playing Footer (for streaming torrents) */}
+            {activeTorrent && view !== 'library' && (
+                <NowPlayingFooter 
+                    torrent={activeTorrent} 
+                    onStream={activeTorrent ? () => handleStreamStart(activeTorrent.id) : undefined}
+                />
+            )}
+
+            {/* Status Bar */}
+            <StatusBar
+                stats={sessionStats}
+                isConnected={true}
+                altSpeedEnabled={altSpeedEnabled}
+                onToggleAltSpeed={handleToggleAltSpeed}
             />
         </div>
+        </ErrorBoundary>
     );
 }
 
