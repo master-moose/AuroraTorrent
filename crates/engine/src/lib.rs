@@ -389,7 +389,7 @@ impl Engine {
                 let params = params.unwrap_or_default();
                 let now = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
-                    .unwrap()
+                    .expect("Time went backwards")
                     .as_secs();
 
                 self.pending_magnets.insert(
@@ -474,7 +474,7 @@ impl Engine {
 
                 let now = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
-                    .unwrap()
+                    .expect("Time went backwards")
                     .as_secs();
                 self.added_times.insert(id.clone(), now);
 
@@ -1861,14 +1861,14 @@ async fn stream_handler(
     Path((id, file_idx)): Path<(String, usize)>,
     State((state, _has_ffmpeg)): State<StreamState>,
     headers: HeaderMap,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, (StatusCode, String)> {
     let session = match state.sessions.get(&id) {
         Some(s) => s,
         None => {
             return Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::from("Torrent not found"))
-                .unwrap()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     };
 
@@ -1878,7 +1878,7 @@ async fn stream_handler(
             return Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::from("File not found"))
-                .unwrap()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     };
 
@@ -1909,7 +1909,7 @@ async fn stream_handler(
                 .status(StatusCode::ACCEPTED)
                 .header(header::CONTENT_TYPE, "text/plain")
                 .body(Body::from("Buffering..."))
-                .unwrap();
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
         }
     }
 
@@ -1939,12 +1939,12 @@ async fn stream_handler(
                 );
             }
 
-            response.body(Body::from(data)).unwrap()
+            response.body(Body::from(data)).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
         Err(e) => Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
             .body(Body::from(format!("Read error: {}", e)))
-            .unwrap(),
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
     }
 }
 
@@ -1952,7 +1952,7 @@ async fn stream_default_handler(
     Path(id): Path<String>,
     State(state): State<StreamState>,
     headers: HeaderMap,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, (StatusCode, String)> {
     stream_handler(Path((id, 0)), State(state), headers).await
 }
 
@@ -1960,7 +1960,7 @@ async fn stream_default_handler(
 async fn media_info_handler(
     Path((id, file_idx)): Path<(String, usize)>,
     State((state, has_ffmpeg)): State<StreamState>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, (StatusCode, String)> {
     let session = match state.sessions.get(&id) {
         Some(s) => s,
         None => {
@@ -1968,7 +1968,7 @@ async fn media_info_handler(
                 .status(StatusCode::NOT_FOUND)
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(r#"{"error":"Torrent not found"}"#))
-                .unwrap()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
         }
     };
 
@@ -1979,7 +1979,7 @@ async fn media_info_handler(
                 .status(StatusCode::NOT_FOUND)
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(r#"{"error":"File not found"}"#))
-                .unwrap()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
         }
     };
 
@@ -2036,19 +2036,19 @@ async fn media_info_handler(
         .header(header::CONTENT_TYPE, "application/json")
         .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .body(Body::from(json.to_string()))
-        .unwrap()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
 /// HLS master playlist handler
 async fn hls_master_handler(
     Path((id, file_idx)): Path<(String, usize)>,
     State((state, has_ffmpeg)): State<StreamState>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, (StatusCode, String)> {
     if !has_ffmpeg {
         return Response::builder()
             .status(StatusCode::SERVICE_UNAVAILABLE)
             .body(Body::from("FFmpeg not available for transcoding"))
-            .unwrap();
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
     }
 
     let session = match state.sessions.get(&id) {
@@ -2057,7 +2057,7 @@ async fn hls_master_handler(
             return Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::from("Torrent not found"))
-                .unwrap()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     };
 
@@ -2065,7 +2065,7 @@ async fn hls_master_handler(
         return Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body(Body::from("File not found"))
-            .unwrap();
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
     }
 
     // Return HLS master playlist pointing to adaptive streams
@@ -2081,21 +2081,21 @@ async fn hls_master_handler(
         .header(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")
         .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .body(Body::from(playlist))
-        .unwrap()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
 /// HLS playlist handler - generates playlist for on-the-fly transcoding
 async fn hls_playlist_handler(
     Path((id, file_idx)): Path<(String, usize)>,
     State((state, _has_ffmpeg)): State<StreamState>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, (StatusCode, String)> {
     let session = match state.sessions.get(&id) {
         Some(s) => s,
         None => {
             return Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::from("Torrent not found"))
-                .unwrap()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     };
 
@@ -2105,7 +2105,7 @@ async fn hls_playlist_handler(
             return Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::from("File not found"))
-                .unwrap()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     };
 
@@ -2126,19 +2126,19 @@ async fn hls_playlist_handler(
         .header(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")
         .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .body(Body::from(playlist))
-        .unwrap()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
 /// HLS segment handler - transcodes segments on demand
 async fn hls_segment_handler(
     Path((id, file_idx, seg)): Path<(String, usize, String)>,
     State((state, has_ffmpeg)): State<StreamState>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, (StatusCode, String)> {
     if !has_ffmpeg {
         return Response::builder()
             .status(StatusCode::SERVICE_UNAVAILABLE)
             .body(Body::from("FFmpeg not available"))
-            .unwrap();
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
     }
 
     let session = match state.sessions.get(&id) {
@@ -2147,7 +2147,7 @@ async fn hls_segment_handler(
             return Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::from("Torrent not found"))
-                .unwrap()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     };
 
@@ -2157,7 +2157,7 @@ async fn hls_segment_handler(
             return Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::from("File not found"))
-                .unwrap()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     };
 
@@ -2177,7 +2177,7 @@ async fn hls_segment_handler(
         return Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body(Body::from("File not yet downloaded"))
-            .unwrap();
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
     }
 
     // Transcode segment using FFmpeg
@@ -2208,19 +2208,19 @@ async fn hls_segment_handler(
                 .header(header::CONTENT_TYPE, "video/mp2t")
                 .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                 .body(Body::from(result.stdout))
-                .unwrap()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
         Ok(_) => {
             Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body(Body::from("Transcoding failed"))
-                .unwrap()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
         Err(e) => {
             Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body(Body::from(format!("FFmpeg error: {}", e)))
-                .unwrap()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     }
 }
@@ -2282,7 +2282,7 @@ fn generate_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .expect("Time went backwards")
         .as_nanos();
     format!("{:x}", now)
 }

@@ -236,9 +236,9 @@ async fn udp_connect(socket: &UdpSocket) -> Result<u64, TrackerError> {
         .await
         {
             Ok(Ok(16)) => {
-                let action = u32::from_be_bytes(buf[0..4].try_into().unwrap());
-                let recv_transaction_id = u32::from_be_bytes(buf[4..8].try_into().unwrap());
-                let connection_id = u64::from_be_bytes(buf[8..16].try_into().unwrap());
+                let action = u32::from_be_bytes(buf[0..4].try_into().map_err(|_| TrackerError::Parse("Invalid action bytes".into()))?);
+                let recv_transaction_id = u32::from_be_bytes(buf[4..8].try_into().map_err(|_| TrackerError::Parse("Invalid transaction ID bytes".into()))?);
+                let connection_id = u64::from_be_bytes(buf[8..16].try_into().map_err(|_| TrackerError::Parse("Invalid connection ID bytes".into()))?);
 
                 if action != 0 || recv_transaction_id != transaction_id {
                     continue;
@@ -287,16 +287,16 @@ async fn udp_announce(
         .await
         {
             Ok(Ok(n)) if n >= 20 => {
-                let action = u32::from_be_bytes(buf[0..4].try_into().unwrap());
-                let recv_transaction_id = u32::from_be_bytes(buf[4..8].try_into().unwrap());
+                let action = u32::from_be_bytes(buf[0..4].try_into().map_err(|_| TrackerError::Parse("Invalid action bytes".into()))?);
+                let recv_transaction_id = u32::from_be_bytes(buf[4..8].try_into().map_err(|_| TrackerError::Parse("Invalid transaction ID bytes".into()))?);
 
                 if action != 1 || recv_transaction_id != transaction_id {
                     continue;
                 }
 
-                let interval = u32::from_be_bytes(buf[8..12].try_into().unwrap());
-                let incomplete = u32::from_be_bytes(buf[12..16].try_into().unwrap());
-                let complete = u32::from_be_bytes(buf[16..20].try_into().unwrap());
+                let interval = u32::from_be_bytes(buf[8..12].try_into().map_err(|_| TrackerError::Parse("Invalid interval bytes".into()))?);
+                let incomplete = u32::from_be_bytes(buf[12..16].try_into().map_err(|_| TrackerError::Parse("Invalid incomplete bytes".into()))?);
+                let complete = u32::from_be_bytes(buf[16..20].try_into().map_err(|_| TrackerError::Parse("Invalid complete bytes".into()))?);
 
                 // Parse peers (6 bytes each)
                 let peers = parse_compact_peers(&buf[20..n]);

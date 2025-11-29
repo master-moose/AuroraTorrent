@@ -21,6 +21,7 @@ import {
     removeTorrent,
     streamTorrent,
     getConfig,
+    toggleAltSpeed,
 } from './rpc';
 import { Torrent, SessionStats, Category, Config } from './types';
 
@@ -233,10 +234,18 @@ function App() {
         }
     }, [selectedTorrent]);
 
-    const handleToggleAltSpeed = () => {
-        setAltSpeedEnabled(!altSpeedEnabled);
-        // TODO: Call RPC to toggle alt speed
-        addToast('info', altSpeedEnabled ? 'Alternative speed limits disabled' : 'Alternative speed limits enabled');
+    const handleToggleAltSpeed = async () => {
+        const newEnabled = !altSpeedEnabled;
+        setAltSpeedEnabled(newEnabled);
+        
+        const result = await toggleAltSpeed(newEnabled);
+        if (result.error) {
+             addToast('error', result.error);
+             // Revert state on error
+             setAltSpeedEnabled(altSpeedEnabled);
+        } else {
+             addToast('info', newEnabled ? 'Alternative speed limits enabled' : 'Alternative speed limits disabled');
+        }
     };
 
     // Drag and drop handlers
