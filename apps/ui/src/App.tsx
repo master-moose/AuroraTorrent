@@ -278,7 +278,7 @@ function App() {
 
     const activeDownloads = torrents.filter(t => t.status === 'Downloading').length;
     const activeTorrent = torrents.find(t => 
-        t.status === 'Downloading' || t.status === 'Streaming'
+        t.status === 'Downloading' || t.status === 'Seeding'
     ) || torrents[0];
 
     return (

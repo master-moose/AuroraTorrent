@@ -256,22 +256,12 @@ export function PieceBarCompact({
     progress: number;
     className?: string;
 }) {
-    const hasData = pieces.length > 0;
-    
-    // If no piece data, show a simple progress bar
-    if (!hasData) {
-        return (
-            <div className={`h-1.5 rounded-full bg-aurora-night/50 overflow-hidden ${className}`}>
-                <div 
-                    className="h-full bg-aurora-cyan transition-all duration-300"
-                    style={{ width: `${progress * 100}%` }}
-                />
-            </div>
-        );
-    }
-
-    // Calculate segments
+    // Calculate segments - must be called unconditionally (Rules of Hooks)
     const segments = useMemo(() => {
+        if (pieces.length === 0) {
+            return [];
+        }
+        
         const numSegments = 50; // Fixed number of visual segments
         const piecesPerSegment = pieces.length / numSegments;
         const result: ('complete' | 'partial' | 'missing')[] = [];
@@ -298,6 +288,20 @@ export function PieceBarCompact({
         
         return result;
     }, [pieces]);
+
+    const hasData = pieces.length > 0;
+    
+    // If no piece data, show a simple progress bar
+    if (!hasData) {
+        return (
+            <div className={`h-1.5 rounded-full bg-aurora-night/50 overflow-hidden ${className}`}>
+                <div 
+                    className="h-full bg-aurora-cyan transition-all duration-300"
+                    style={{ width: `${progress * 100}%` }}
+                />
+            </div>
+        );
+    }
 
     return (
         <div className={`h-1.5 rounded-full bg-aurora-night/50 overflow-hidden flex ${className}`}>

@@ -1072,8 +1072,13 @@ impl Engine {
     }
 
     pub async fn toggle_alt_speed(&self, enabled: bool) -> EngineResult<()> {
-        let mut config = self.config.write().await;
-        config.use_alt_speed_limits = enabled;
+        {
+            let mut config = self.config.write().await;
+            config.use_alt_speed_limits = enabled;
+        }
+        if let Err(e) = self.save_state().await {
+            warn!("Failed to save alt speed setting: {}", e);
+        }
         EngineResult::ok_empty()
     }
 
@@ -1082,28 +1087,41 @@ impl Engine {
     // =========================================================================
 
     pub async fn create_category(&self, name: String, save_path: Option<String>) -> EngineResult<()> {
-        let mut config = self.config.write().await;
-        config.add_category(name, save_path);
+        {
+            let mut config = self.config.write().await;
+            config.add_category(name, save_path);
+        }
+        if let Err(e) = self.save_state().await {
+            warn!("Failed to save category: {}", e);
+        }
         EngineResult::ok_empty()
     }
 
     pub async fn edit_category(&self, name: String, save_path: Option<String>) -> EngineResult<()> {
-        let mut config = self.config.write().await;
-        if config.categories.contains_key(&name) {
+        {
+            let mut config = self.config.write().await;
+            if !config.categories.contains_key(&name) {
+                return EngineResult::err("Category not found");
+            }
             config.categories.insert(name.clone(), Category { name, save_path });
-            EngineResult::ok_empty()
-        } else {
-            EngineResult::err("Category not found")
         }
+        if let Err(e) = self.save_state().await {
+            warn!("Failed to save category edit: {}", e);
+        }
+        EngineResult::ok_empty()
     }
 
     pub async fn delete_category(&self, name: &str) -> EngineResult<()> {
-        let mut config = self.config.write().await;
-        if config.remove_category(name) {
-            EngineResult::ok_empty()
-        } else {
-            EngineResult::err("Category not found")
+        {
+            let mut config = self.config.write().await;
+            if !config.remove_category(name) {
+                return EngineResult::err("Category not found");
+            }
         }
+        if let Err(e) = self.save_state().await {
+            warn!("Failed to save category deletion: {}", e);
+        }
+        EngineResult::ok_empty()
     }
 
     pub async fn get_categories(&self) -> HashMap<String, Category> {
@@ -1111,18 +1129,27 @@ impl Engine {
     }
 
     pub async fn create_tag(&self, tag: String) -> EngineResult<()> {
-        let mut config = self.config.write().await;
-        config.add_tag(tag);
+        {
+            let mut config = self.config.write().await;
+            config.add_tag(tag);
+        }
+        if let Err(e) = self.save_state().await {
+            warn!("Failed to save tag: {}", e);
+        }
         EngineResult::ok_empty()
     }
 
     pub async fn delete_tag(&self, tag: &str) -> EngineResult<()> {
-        let mut config = self.config.write().await;
-        if config.remove_tag(tag) {
-            EngineResult::ok_empty()
-        } else {
-            EngineResult::err("Tag not found")
+        {
+            let mut config = self.config.write().await;
+            if !config.remove_tag(tag) {
+                return EngineResult::err("Tag not found");
+            }
         }
+        if let Err(e) = self.save_state().await {
+            warn!("Failed to save tag deletion: {}", e);
+        }
+        EngineResult::ok_empty()
     }
 
     pub async fn get_tags(&self) -> Vec<String> {
@@ -1887,11 +1914,22 @@ async fn stream_handler(
         .first_or_octet_stream()
         .to_string();
 
+    // Handle zero-length files
+    if file_size == 0 {
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, content_type)
+            .header(header::CONTENT_LENGTH, 0)
+            .body(Body::empty())
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+    }
+
     let range = headers
         .get(header::RANGE)
         .and_then(|v| v.to_str().ok())
         .and_then(|s| parse_range(s, file_size));
 
+    // file_size > 0 guaranteed at this point
     let (start, end) = range.unwrap_or((0, file_size - 1));
     let content_length = end - start + 1;
     let data_start = file.offset + start;
@@ -2226,12 +2264,20 @@ async fn hls_segment_handler(
 }
 
 fn parse_range(range_str: &str, file_size: u64) -> Option<(u64, u64)> {
+    // Early return for zero-length files - no valid range possible
+    if file_size == 0 {
+        return None;
+    }
+
     let range_str = range_str.strip_prefix("bytes=")?;
     let parts: Vec<&str> = range_str.split('-').collect();
 
     if parts.len() != 2 {
         return None;
     }
+
+    // file_size > 0 guaranteed at this point
+    let last_byte = file_size - 1;
 
     let start: u64 = if parts[0].is_empty() {
         let suffix: u64 = parts[1].parse().ok()?;
@@ -2241,7 +2287,7 @@ fn parse_range(range_str: &str, file_size: u64) -> Option<(u64, u64)> {
     };
 
     let end: u64 = if parts[1].is_empty() {
-        file_size - 1
+        last_byte
     } else {
         parts[1].parse().ok()?
     };
@@ -2250,7 +2296,7 @@ fn parse_range(range_str: &str, file_size: u64) -> Option<(u64, u64)> {
         return None;
     }
 
-    Some((start, std::cmp::min(end, file_size - 1)))
+    Some((start, std::cmp::min(end, last_byte)))
 }
 
 // =============================================================================

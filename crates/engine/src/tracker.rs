@@ -131,7 +131,7 @@ async fn announce_http(
 
     debug!("HTTP announce: {}", url);
 
-    let response = client.get(&url).send().await?;
+    let response = client.get(&url).send().await?.error_for_status()?;
     let body = response.bytes().await?;
 
     let (value, _) = BencodeValue::parse(&body).map_err(|_| TrackerError::InvalidResponse)?;
@@ -142,24 +142,45 @@ async fn announce_http(
         return Err(TrackerError::Failure(msg.to_string()));
     }
 
-    let interval = value
+    // Helper to validate and convert i64 to u32
+    let validate_u32 = |val: i64| -> Result<u32, TrackerError> {
+        if val < 0 || val > u32::MAX as i64 {
+            return Err(TrackerError::InvalidResponse);
+        }
+        Ok(val as u32)
+    };
+
+    // Helper to validate and convert i64 to u16
+    let validate_u16 = |val: i64| -> Result<u16, TrackerError> {
+        if val < 0 || val > u16::MAX as i64 {
+            return Err(TrackerError::InvalidResponse);
+        }
+        Ok(val as u16)
+    };
+
+    let interval_val = value
         .get("interval")
         .and_then(|v| v.as_integer())
-        .ok_or(TrackerError::InvalidResponse)? as u32;
+        .ok_or(TrackerError::InvalidResponse)?;
+    let interval = validate_u32(interval_val)?;
 
-    let min_interval = value
-        .get("min interval")
-        .and_then(|v| v.as_integer())
-        .map(|v| v as u32);
+    let min_interval = if let Some(val) = value.get("min interval").and_then(|v| v.as_integer()) {
+        Some(validate_u32(val)?)
+    } else {
+        None
+    };
 
-    let complete = value
-        .get("complete")
-        .and_then(|v| v.as_integer())
-        .map(|v| v as u32);
-    let incomplete = value
-        .get("incomplete")
-        .and_then(|v| v.as_integer())
-        .map(|v| v as u32);
+    let complete = if let Some(val) = value.get("complete").and_then(|v| v.as_integer()) {
+        Some(validate_u32(val)?)
+    } else {
+        None
+    };
+
+    let incomplete = if let Some(val) = value.get("incomplete").and_then(|v| v.as_integer()) {
+        Some(validate_u32(val)?)
+    } else {
+        None
+    };
 
     // Parse peers (compact or dictionary format)
     let peers = if let Some(peers_data) = value.get("peers") {
@@ -168,15 +189,26 @@ async fn announce_http(
             parse_compact_peers(compact_peers)
         } else if let Some(peer_list) = peers_data.as_list() {
             // Dictionary format
-            peer_list
-                .iter()
-                .filter_map(|peer| {
-                    let ip = peer.get("ip")?.as_str()?;
-                    let port = peer.get("port")?.as_integer()? as u16;
-                    let addr: Ipv4Addr = ip.parse().ok()?;
-                    Some(SocketAddr::V4(SocketAddrV4::new(addr, port)))
-                })
-                .collect()
+            let mut result = Vec::new();
+            for peer in peer_list {
+                let ip = match peer.get("ip").and_then(|v| v.as_str()) {
+                    Some(ip) => ip,
+                    None => continue,
+                };
+                let port_val = match peer.get("port").and_then(|v| v.as_integer()) {
+                    Some(p) => p,
+                    None => continue,
+                };
+                // Skip invalid port values
+                let port = match validate_u16(port_val) {
+                    Ok(p) => p,
+                    Err(_) => continue,
+                };
+                if let Ok(addr) = ip.parse::<Ipv4Addr>() {
+                    result.push(SocketAddr::V4(SocketAddrV4::new(addr, port)));
+                }
+            }
+            result
         } else {
             Vec::new()
         }
@@ -216,34 +248,61 @@ async fn announce_udp(
     Ok(response)
 }
 
+/// UDP tracker action values per BEP 15
+const UDP_ACTION_CONNECT: u32 = 0;
+const UDP_ACTION_ANNOUNCE: u32 = 1;
+const UDP_ACTION_ERROR: u32 = 3;
+
 async fn udp_connect(socket: &UdpSocket) -> Result<u64, TrackerError> {
     let transaction_id: u32 = rand::random();
 
     // Connect request: 16 bytes
     let mut request = Vec::with_capacity(16);
     request.extend_from_slice(&0x41727101980u64.to_be_bytes()); // Protocol ID
-    request.extend_from_slice(&0u32.to_be_bytes()); // Action: connect
+    request.extend_from_slice(&UDP_ACTION_CONNECT.to_be_bytes()); // Action: connect
     request.extend_from_slice(&transaction_id.to_be_bytes());
 
     for attempt in 0..3 {
         socket.send(&request).await?;
 
-        let mut buf = [0u8; 16];
+        // Use larger buffer to accommodate error messages (BEP 15 error responses are variable length)
+        let mut buf = vec![0u8; 1024];
         match timeout(
             Duration::from_secs(5 * (1 << attempt)),
             socket.recv(&mut buf),
         )
         .await
         {
-            Ok(Ok(16)) => {
+            Ok(Ok(n)) if n >= 8 => {
                 let action = u32::from_be_bytes(buf[0..4].try_into().map_err(|_| TrackerError::Parse("Invalid action bytes".into()))?);
                 let recv_transaction_id = u32::from_be_bytes(buf[4..8].try_into().map_err(|_| TrackerError::Parse("Invalid transaction ID bytes".into()))?);
-                let connection_id = u64::from_be_bytes(buf[8..16].try_into().map_err(|_| TrackerError::Parse("Invalid connection ID bytes".into()))?);
 
-                if action != 0 || recv_transaction_id != transaction_id {
+                // Verify transaction ID first - if mismatched, this response is not for us
+                if recv_transaction_id != transaction_id {
                     continue;
                 }
 
+                // Check for error response (action = 3 per BEP 15)
+                if action == UDP_ACTION_ERROR {
+                    let error_msg = if n > 8 {
+                        String::from_utf8_lossy(&buf[8..n]).to_string()
+                    } else {
+                        "Unknown tracker error".to_string()
+                    };
+                    return Err(TrackerError::Failure(error_msg));
+                }
+
+                // Verify we got a connect response (action = 0)
+                if action != UDP_ACTION_CONNECT {
+                    continue;
+                }
+
+                // Connect response must be at least 16 bytes
+                if n < 16 {
+                    continue;
+                }
+
+                let connection_id = u64::from_be_bytes(buf[8..16].try_into().map_err(|_| TrackerError::Parse("Invalid connection ID bytes".into()))?);
                 return Ok(connection_id);
             }
             _ => continue,
@@ -263,7 +322,7 @@ async fn udp_announce(
     // Announce request: 98 bytes
     let mut request = Vec::with_capacity(98);
     request.extend_from_slice(&connection_id.to_be_bytes());
-    request.extend_from_slice(&1u32.to_be_bytes()); // Action: announce
+    request.extend_from_slice(&UDP_ACTION_ANNOUNCE.to_be_bytes()); // Action: announce
     request.extend_from_slice(&transaction_id.to_be_bytes());
     request.extend_from_slice(&params.info_hash);
     request.extend_from_slice(&params.peer_id);
@@ -286,11 +345,32 @@ async fn udp_announce(
         )
         .await
         {
-            Ok(Ok(n)) if n >= 20 => {
+            Ok(Ok(n)) if n >= 8 => {
                 let action = u32::from_be_bytes(buf[0..4].try_into().map_err(|_| TrackerError::Parse("Invalid action bytes".into()))?);
                 let recv_transaction_id = u32::from_be_bytes(buf[4..8].try_into().map_err(|_| TrackerError::Parse("Invalid transaction ID bytes".into()))?);
 
-                if action != 1 || recv_transaction_id != transaction_id {
+                // Verify transaction ID first - if mismatched, this response is not for us
+                if recv_transaction_id != transaction_id {
+                    continue;
+                }
+
+                // Check for error response (action = 3 per BEP 15)
+                if action == UDP_ACTION_ERROR {
+                    let error_msg = if n > 8 {
+                        String::from_utf8_lossy(&buf[8..n]).to_string()
+                    } else {
+                        "Unknown tracker error".to_string()
+                    };
+                    return Err(TrackerError::Failure(error_msg));
+                }
+
+                // Verify we got an announce response (action = 1)
+                if action != UDP_ACTION_ANNOUNCE {
+                    continue;
+                }
+
+                // Announce response must be at least 20 bytes
+                if n < 20 {
                     continue;
                 }
 
